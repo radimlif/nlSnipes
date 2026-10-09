@@ -89,7 +89,7 @@ jobs:
           go build -trimpath \
             -ldflags "-s -w -X github.com/radimlif/nlSnipes/app.Version=${GITHUB_SHA::7}" \
             -o dist/nlsnipes-${GOOS}-${GOARCH}${{ matrix.target.ext }} ./cmd/nlsnipes
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: nlsnipes-${{ matrix.target.goos }}-${{ matrix.target.goarch }}
           path: dist/
