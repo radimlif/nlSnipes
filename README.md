@@ -38,6 +38,14 @@ would have started. The view fills the window, so make it big (in Ghostty:
 `ghostty --window-width=110 --window-height=50`).
 
 
+## Download
+
+Grab the file for your system from the [latest release](https://github.com/radimlif/nlSnipes/releases/latest):
+`nlsnipes-windows-amd64.exe`, `nlsnipes-darwin-arm64` (Apple silicon), `nlsnipes-darwin-amd64`
+(Intel Mac) or `nlsnipes-linux-amd64`. It is one file with nothing to install. The binaries are
+not code-signed: on Windows choose *More info → Run anyway*; on macOS run
+`xattr -d com.apple.quarantine nlsnipes-darwin-*` and `chmod +x` it once.
+
 ## Build
 
 ```sh
