@@ -4,10 +4,10 @@ random/A1/p1/seed1/2000 15ee6de5
 new/A1/p4/seed1 f9677631
 random/A1/p4/seed1/2000 f1c08ae8
 new/M5/p1/seed1 671b37f3
-random/M5/p1/seed1/2000 5e56b2f4
+random/M5/p1/seed1/2000 0c5c4abd
 new/M5/p4/seed1 11334582
-random/M5/p4/seed1/2000 c36bb90d
+random/M5/p4/seed1/2000 225c900c
 new/Z9/p1/seed1 54709a7e
-random/Z9/p1/seed1/2000 65563e02
+random/Z9/p1/seed1/2000 3f3e7bbb
 new/Z9/p4/seed1 5ec1c44b
-random/Z9/p4/seed1/2000 65a98712
+random/Z9/p4/seed1/2000 5c06569b

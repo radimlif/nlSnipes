@@ -501,7 +501,7 @@ func (s *State) killEntity(i int, scorer int8, split bool) {
 		s.SnipesAlive++
 		return
 	}
-	s.spawn(Entity{Kind: KindDebris, X: e.X, Y: e.Y, Owner: -1, Timer: DebrisLife})
+	s.spawn(Entity{Kind: KindDebris, X: e.X, Y: e.Y, Dir: uint8(e.Kind), Owner: -1, Timer: DebrisLife})
 }
 
 func (s *State) killPlayer(i int) {
@@ -513,7 +513,7 @@ func (s *State) killPlayer(i int) {
 		p.Respawn = RespawnDelay
 	}
 	s.emit(EvPlayerDied, e.X, e.Y, e.Owner)
-	s.spawn(Entity{Kind: KindDebris, X: e.X, Y: e.Y, Owner: -1, Timer: DebrisLife})
+	s.spawn(Entity{Kind: KindDebris, X: e.X, Y: e.Y, Dir: uint8(e.Kind), Owner: -1, Timer: DebrisLife})
 }
 
 // respawn puts slot back at its spawn point, or the first cell centre after

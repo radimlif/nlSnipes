@@ -11,7 +11,7 @@ const (
 	KindGhost // small snipe, 1 × 1
 	KindBullet
 	KindSpear
-	KindDebris // decorative remnant, never collides
+	KindDebris // explosion remnant: never collides; Dir holds the Kind that exploded
 )
 
 var kindW = [8]int32{0, 2, 2, 2, 1, 1, 1, 1}
@@ -25,7 +25,7 @@ type Entity struct {
 	ID      uint32
 	Kind    Kind
 	X, Y    int32
-	Dir     uint8
+	Dir     uint8 // heading; for debris, the Kind that exploded
 	Turn    int8  // large snipe: fixed turning direction, +1 or -1
 	Owner   int8  // player slot for players and bullets, -1 otherwise
 	Bounces uint8 // bullet: wall bounces left
