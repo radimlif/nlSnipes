@@ -63,7 +63,8 @@ Passing gates is necessary, not sufficient — the owner's standing ask is "make
 - `gofmt -l . && go vet ./...`              lint
 - `GOTOOLCHAIN=go1.23.12 go run honnef.co/go/tools/cmd/staticcheck@2025.1.1 ./...`
                                             staticcheck as CI runs it (it can't read newer Go's export data)
-- `go run ./cmd/nlsnipes M5`                play
+- `go run ./cmd/nlsnipes M5`                play (`--offline` alone; two instances = a LAN game)
+- `./scripts/demo-gif.sh`                   regenerate docs/demo.gif (needs `brew install agg`)
 
 ## Conventions
 - Branch `l<n>/<slug>`; PR title `L<n>: <milestone>`; conventional commits (`feat:`, `fix:`,

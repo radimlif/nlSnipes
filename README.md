@@ -1,5 +1,7 @@
 # nlSnipes
 
+![A bot playing NLSNIPES: the title screen, then the maze, hives, snipes and mirror shots](docs/demo.gif)
+
 NLSNIPES Light: the 1982 text-mode maze shooter *Snipes* as one small executable.
 Launch it on any machine on your LAN. If a game is already running on the subnet you join it;
 otherwise you host and the game starts. Up to 4 players, everyone else spectates.
