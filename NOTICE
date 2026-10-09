@@ -1,0 +1,16 @@
+NLSNIPES Light
+Copyright (c) 2026 Radim Fiala. Licensed under the MIT License (see LICENSE).
+
+This is an independent re-creation of Snipes, the 1982 text-mode game by
+SuperSet Software (Drew Major, Kyle Powell, Dale Neibaur, Mark Hurst), later
+shipped with Novell NetWare as NSNIPES / NLSNIPES. No original code or assets
+are included. "Snipes" and "NLSNIPES" are used descriptively; no affiliation
+with SuperSet Software, Novell or OpenText is implied.
+
+Game behaviour was studied from Davidebyzero/Snipes
+(https://github.com/Davidebyzero/Snipes), a reverse-engineered port published
+with the original authors' permission, whose copyright remains with them. It is
+referenced as a git submodule under reference/ for behaviour lookup and for
+the CI similarity check only; none of its code is part of this project.
+
+Third-party Go modules keep their own licences (see go.mod).
