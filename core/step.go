@@ -20,6 +20,14 @@ func (s *State) Step(in [MaxPlayers]Input) {
 		return
 	}
 	s.Events = s.Events[:0]
+	for slot := 0; slot < MaxPlayers; slot++ {
+		switch {
+		case in[slot].Leave:
+			s.leave(slot)
+		case in[slot].Join:
+			s.join(slot)
+		}
+	}
 	n := len(s.Ents)
 	for slot := 0; slot < MaxPlayers; slot++ {
 		s.stepPlayer(slot, in[slot])
@@ -521,6 +529,30 @@ func (s *State) killPlayer(i int) {
 	}
 	s.emit(EvPlayerDied, e.X, e.Y, e.Owner)
 	s.spawn(Entity{Kind: KindDebris, X: e.X, Y: e.Y, Dir: uint8(e.Kind), Owner: -1, Timer: DebrisLife})
+}
+
+// join seats a new player in a free slot: full lives, no score, spawning
+// this tick near a random cell.
+func (s *State) join(slot int) {
+	p := &s.Players[slot]
+	if p.Joined {
+		return
+	}
+	x, y := cellCentre(int32(s.Rng.Int(NumCells)))
+	*p = Player{Joined: true, Lives: int32(s.Cfg.Lives), Respawn: 1, SpawnX: x, SpawnY: y}
+	s.emit(EvJoin, x, y, int8(slot))
+}
+
+// leave removes a player and its body; the slot becomes free.
+func (s *State) leave(slot int) {
+	if !s.Players[slot].Joined {
+		return
+	}
+	if i := s.PlayerEntity(slot); i >= 0 {
+		s.remove(i)
+	}
+	s.Players[slot] = Player{}
+	s.emit(EvLeave, 0, 0, int8(slot))
 }
 
 // respawn puts slot back at its spawn point, or the first cell centre after

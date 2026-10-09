@@ -338,3 +338,34 @@ func TestMirrorDiagonalReflectsOnLetterA(t *testing.T) {
 	}
 	t.Fatal("mirror bullet died on the wall")
 }
+
+func TestJoinAndLeaveMidGame(t *testing.T) {
+	cfg, _ := NewConfig("A1", 1, true)
+	s := NewGame(cfg, 9)
+	step(s, 10, Input{})
+	s.Step([MaxPlayers]Input{{}, {}, {Join: true}})
+	if !s.Players[2].Joined || s.PlayerEntity(2) < 0 || s.Players[2].Lives != int32(cfg.Lives) {
+		t.Fatalf("slot 2 did not join: %+v", s.Players[2])
+	}
+	s.Step([MaxPlayers]Input{{}, {}, {Join: true}}) // already taken: no-op
+	if count(s, KindPlayer) != 2 {
+		t.Fatalf("%d players on the map", count(s, KindPlayer))
+	}
+	s.Step([MaxPlayers]Input{{}, {}, {Leave: true}})
+	if s.Players[2].Joined || s.PlayerEntity(2) >= 0 {
+		t.Fatal("slot 2 did not leave")
+	}
+	// Joins replay exactly.
+	rec := NewRecorder(cfg, 9)
+	for i := 0; i < 300; i++ {
+		var in [MaxPlayers]Input
+		in[1].Join = i == 20
+		in[1].Leave = i == 200
+		in[3].Join = i == 50
+		in[1].Mask = uint8(i * 7)
+		rec.Step(in)
+	}
+	if _, err := rec.Replay.Play(); err != nil {
+		t.Fatal(err)
+	}
+}

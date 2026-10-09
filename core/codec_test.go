@@ -84,3 +84,27 @@ func TestReplayRoundTrip(t *testing.T) {
 		t.Fatal("tampered replay still matched its hash")
 	}
 }
+
+func TestManyEntitiesRoundTrip(t *testing.T) {
+	cfg, _ := NewConfig("Z9", 4, true)
+	s := NewGame(cfg, 2)
+	for i := 0; i < 2000; i++ {
+		s.Ents = append(s.Ents, Entity{ID: uint32(10000 + i), Kind: KindDebris, X: int32(i % GridWidth), Y: int32(i % GridHeight), Owner: -1, Timer: 5})
+	}
+	b, _ := s.MarshalBinary()
+	var n State
+	if err := n.UnmarshalBinary(b); err != nil {
+		t.Fatalf("2000 extra entities: %v", err)
+	}
+	if n.Hash() != s.Hash() {
+		t.Fatal("hash changed")
+	}
+}
+
+func TestStateIsCompact(t *testing.T) {
+	cfg, _ := NewConfig("A1", 4, true)
+	b, _ := NewGame(cfg, 1).MarshalBinary()
+	if len(b) > 1000 {
+		t.Fatalf("new A1 game encodes to %d bytes; the tile grid should not be in it", len(b))
+	}
+}

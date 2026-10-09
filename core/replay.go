@@ -69,6 +69,12 @@ func (rp *Replay) MarshalBinary() ([]byte, error) {
 			if p.ToggleMirror {
 				flags |= 2
 			}
+			if p.Join {
+				flags |= 4
+			}
+			if p.Leave {
+				flags |= 8
+			}
 			b.u8(flags)
 		}
 	}
@@ -102,7 +108,7 @@ func (rp *Replay) UnmarshalBinary(data []byte) error {
 	r.Inputs = make([][MaxPlayers]Input, n)
 	for i := range r.Inputs {
 		for p := range r.Inputs[i] {
-			r.Inputs[i][p] = Input{Mask: d.b[0], Fast: d.b[1]&1 != 0, ToggleMirror: d.b[1]&2 != 0}
+			r.Inputs[i][p] = Input{Mask: d.b[0], Fast: d.b[1]&1 != 0, ToggleMirror: d.b[1]&2 != 0, Join: d.b[1]&4 != 0, Leave: d.b[1]&8 != 0}
 			d.b = d.b[2:]
 		}
 	}

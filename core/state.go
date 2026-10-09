@@ -68,6 +68,8 @@ const (
 	EvBounce
 	EvRespawn
 	EvMirror // a player toggled mirror shots
+	EvJoin   // a player joined
+	EvLeave  // a player left
 )
 
 // Event is one thing that happened this tick. Events are not part of the hash.
@@ -84,6 +86,10 @@ type Input struct {
 	// ToggleMirror flips mirror shots for this player on this tick. The
 	// terminal client sends it when the player types IDDQD.
 	ToggleMirror bool
+	// Join puts a player into this slot this tick (ignored if taken);
+	// Leave takes the slot's player out. LAN hosts send them so that every
+	// copy of the game changes its roster on the same tick.
+	Join, Leave bool
 }
 
 // Input mask bits.

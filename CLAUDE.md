@@ -43,10 +43,12 @@ Passing gates is necessary, not sufficient — the owner's standing ask is "make
 ## Layout
 - `core/`   deterministic simulation (L1); goldens in core/testdata/golden.txt (`go test ./core -run Golden -update`)
 - `bots/`   RandomBot, HunterBot, `Play` harness, L1 gate tests
-- `lan/`    UDP protocol: beacon/probe/join/welcome/input/snapshot/delta/bye, port 5108 (L3)
+- `lan/`    UDP protocol (ADR 0008): discovery, host, client, spectators; per-tick input records
+            with state hashes, snapshots, resync; gate tests on loopback (L3)
 - `term/`   own terminal layer: ANSI renderer 40×25, input parser (VT + kitty protocol), Windows
             console input, key-hold tracking/emulation, `Sim` for tests (L2)
-- `app/`    solo game loop, title/HUD/help/results, high scores (L2); LAN host/join/migrate (L3–L4)
+- `app/`    the game: launch (discover → join or host), title/HUD/roster/help/results, spectator
+            camera, high scores; host migration in L4
 - `cmd/nlsnipes/` the game binary · `cmd/simbot/` headless bot games for CI
 - `tools/simcheck/` the similarity checker · `reference/` read-only submodule, never edit
 

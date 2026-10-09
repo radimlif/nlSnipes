@@ -26,11 +26,11 @@ func find(f *term.Frame, s string) string {
 	return ""
 }
 
-func newTest(t *testing.T, skill string, releases bool) (*Solo, *term.Sim, *clock) {
+func newTest(t *testing.T, skill string, releases bool) (*Game, *term.Sim, *clock) {
 	t.Helper()
 	sim := term.NewSim(80, 30, releases)
 	c := &clock{t: time.Date(2026, 10, 9, 12, 0, 0, 0, time.UTC)}
-	return NewSolo(sim, Options{Skill: skill, Seed: 1, Now: c.now}), sim, c
+	return NewOffline(sim, Options{Skill: skill, Seed: 1, Now: c.now, FriendlyFire: true}), sim, c
 }
 
 // keyFor maps a core input bit to the key that produces it.
@@ -42,7 +42,7 @@ var keyFor = map[uint8]term.Event{
 }
 
 // typeMask presses and releases keys so the held set matches mask.
-func typeMask(a *Solo, prev, mask uint8) {
+func typeMask(a *Game, prev, mask uint8) {
 	for bit := uint8(1); bit != 0; bit <<= 1 {
 		ev := keyFor[bit]
 		switch {
@@ -65,7 +65,7 @@ func TestGateScriptedHiveKill(t *testing.T) {
 	var held uint8
 	var r term.Renderer
 	for tick := 0; tick < 3000; tick++ {
-		want := hunter.Input(a.Game(), 0).Mask
+		want := hunter.Input(a.State(), 0).Mask
 		typeMask(a, held, want)
 		held = want
 		c.t = c.t.Add(TickDuration)
@@ -73,9 +73,9 @@ func TestGateScriptedHiveKill(t *testing.T) {
 		if err := term.Present(sim, &r, a.Frame()); err != nil {
 			t.Fatal(err)
 		}
-		if a.Game().HivesAlive < int32(a.Game().Cfg.Hives) {
+		if a.State().HivesAlive < int32(a.State().Cfg.Hives) {
 			f := a.Frame()
-			score := a.Game().Players[0].Score
+			score := a.State().Players[0].Score
 			if score < 50 {
 				t.Fatalf("hive down but score %d", score)
 			}
@@ -88,7 +88,7 @@ func TestGateScriptedHiveKill(t *testing.T) {
 			if !strings.Contains(string(sim.Output), "HIVE DESTROYED") {
 				t.Fatal("hive message never reached the terminal output")
 			}
-			t.Logf("hive destroyed at tick %d, score %d", a.Game().Tick, score)
+			t.Logf("hive destroyed at tick %d, score %d", a.State().Tick, score)
 			return
 		}
 	}
@@ -116,8 +116,8 @@ func itoa(n int32) string {
 func TestEmulatedKeysStillPlay(t *testing.T) {
 	a, _, c := newTest(t, "A1", false)
 	hunter := bots.NewHunter()
-	for tick := 0; tick < 4000 && a.Game().HivesAlive == int32(a.Game().Cfg.Hives); tick++ {
-		want := hunter.Input(a.Game(), 0).Mask
+	for tick := 0; tick < 4000 && a.State().HivesAlive == int32(a.State().Cfg.Hives); tick++ {
+		want := hunter.Input(a.State(), 0).Mask
 		for bit := uint8(1); bit != 0; bit <<= 1 {
 			if want&bit != 0 { // terminal auto-repeat keeps sending presses
 				ev := keyFor[bit]
@@ -128,14 +128,14 @@ func TestEmulatedKeysStillPlay(t *testing.T) {
 		c.t = c.t.Add(TickDuration)
 		a.Tick()
 	}
-	if a.Game().HivesAlive == int32(a.Game().Cfg.Hives) {
+	if a.State().HivesAlive == int32(a.State().Cfg.Hives) {
 		t.Fatal("no hive destroyed with emulated key holds")
 	}
 }
 
 func TestTitleSkillPrompt(t *testing.T) {
 	a, _, _ := newTest(t, "", true)
-	if a.Game() != nil || find(a.Frame(), "[ A1 ]") == "" {
+	if a.State() != nil || find(a.Frame(), "[ A1 ]") == "" {
 		t.Fatal("title should offer A1")
 	}
 	for _, ev := range []term.Event{{Kind: term.EvPress, Key: term.KeyRune, Rune: 'm'}, {Kind: term.EvPress, Key: term.KeyRune, Rune: '5'}} {
@@ -146,7 +146,7 @@ func TestTitleSkillPrompt(t *testing.T) {
 		t.Fatal("typed M5, title does not show it")
 	}
 	a.HandleEvent(term.Event{Kind: term.EvPress, Key: term.KeyEnter})
-	if a.Game() == nil || a.Game().Cfg.Skill() != "M5" {
+	if a.State() == nil || a.State().Cfg.Skill() != "M5" {
 		t.Fatal("Enter did not start an M5 game")
 	}
 	if !a.HandleEvent(term.Event{Kind: term.EvPress, Key: term.KeyEsc}) {
@@ -158,7 +158,7 @@ func TestBadSkillStaysOnTitle(t *testing.T) {
 	a, _, _ := newTest(t, "", true)
 	a.HandleEvent(term.Event{Kind: term.EvPress, Key: term.KeyRune, Rune: 'q'})
 	a.HandleEvent(term.Event{Kind: term.EvPress, Key: term.KeyEnter})
-	if a.Game() != nil {
+	if a.State() != nil {
 		t.Fatal("started without a digit")
 	}
 	a.Tick()
@@ -170,12 +170,12 @@ func TestBadSkillStaysOnTitle(t *testing.T) {
 func TestF1PausesAndShowsLegend(t *testing.T) {
 	a, _, c := newTest(t, "A1", true)
 	a.HandleEvent(term.Event{Kind: term.EvPress, Key: term.KeyF1})
-	tick := a.Game().Tick
+	tick := a.State().Tick
 	for i := 0; i < 10; i++ {
 		c.t = c.t.Add(TickDuration)
 		a.Tick()
 	}
-	if a.Game().Tick != tick {
+	if a.State().Tick != tick {
 		t.Fatal("game ran while the legend was open")
 	}
 	if find(a.Frame(), "HOW TO PLAY") == "" {
@@ -183,7 +183,7 @@ func TestF1PausesAndShowsLegend(t *testing.T) {
 	}
 	a.HandleEvent(term.Event{Kind: term.EvPress, Key: term.KeyF1})
 	a.Tick()
-	if a.Game().Tick != tick+1 {
+	if a.State().Tick != tick+1 {
 		t.Fatal("game did not resume")
 	}
 }
@@ -192,7 +192,7 @@ func TestDeathRingsBellAndHighScoreSaved(t *testing.T) {
 	dir := t.TempDir()
 	sim := term.NewSim(80, 30, true)
 	c := &clock{t: time.Unix(0, 0)}
-	a := NewSolo(sim, Options{Skill: "Z9", Seed: 3, ScoreFile: dir + "/s.json", Now: c.now})
+	a := NewOffline(sim, Options{Skill: "Z9", Seed: 3, ScoreFile: dir + "/s.json", Now: c.now})
 	// Z9 has electric walls: walk right until something kills us.
 	a.HandleEvent(term.Event{Kind: term.EvPress, Key: term.KeyRight})
 	for i := 0; i < 400 && sim.Bells == 0; i++ {
@@ -201,7 +201,7 @@ func TestDeathRingsBellAndHighScoreSaved(t *testing.T) {
 	if sim.Bells == 0 {
 		t.Fatal("no bell on death")
 	}
-	a.Game().Players[0].Score = 77
+	a.State().Players[0].Score = 77
 	a.saveScore()
 	if got := LoadScores(dir + "/s.json")["Z9"]; got != 77 {
 		t.Fatalf("saved best %d, want 77", got)
@@ -216,14 +216,14 @@ func TestGateFrameRender(t *testing.T) {
 	}
 	sim := term.NewSim(130, 120, true) // largest view: 120 × 113
 	c := &clock{t: time.Unix(0, 0)}
-	a := NewSolo(sim, Options{Skill: "Z9", Seed: 1, Now: c.now})
-	a.Game().Players[0].Lives = 1 << 20
+	a := NewOffline(sim, Options{Skill: "Z9", Seed: 1, Now: c.now})
+	a.State().Players[0].Lives = 1 << 20
 	var r term.Renderer
 	var ns []time.Duration
 	for i := 0; i < 3000; i++ {
 		typeMask(a, 0, 0)
 		c.t = c.t.Add(TickDuration)
-		a.Game().Step([core.MaxPlayers]core.Input{{Mask: uint8(i * 37)}})
+		a.State().Step([core.MaxPlayers]core.Input{{Mask: uint8(i * 37)}})
 		t0 := time.Now()
 		a.compose()
 		r.Render(a.Frame(), 130, 120)
@@ -237,7 +237,7 @@ func TestGateFrameRender(t *testing.T) {
 	}
 }
 
-func typeRunes(a *Solo, s string) {
+func typeRunes(a *Game, s string) {
 	for _, r := range s {
 		a.HandleEvent(term.Event{Kind: term.EvPress, Key: term.KeyRune, Rune: r})
 		a.HandleEvent(term.Event{Kind: term.EvRelease, Key: term.KeyRune, Rune: r})
@@ -249,7 +249,7 @@ func TestIDDQDTogglesMirrorShotsAndSurvivesNewMaze(t *testing.T) {
 	typeRunes(a, "iddqd")
 	c.t = c.t.Add(TickDuration)
 	a.Tick()
-	if !a.Game().Players[0].Mirror {
+	if !a.State().Players[0].Mirror {
 		t.Fatal("IDDQD did not turn on mirror shots")
 	}
 	if find(a.Frame(), "Mirror shots") == "" {
@@ -257,12 +257,12 @@ func TestIDDQDTogglesMirrorShotsAndSurvivesNewMaze(t *testing.T) {
 	}
 	a.start() // next maze
 	a.Tick()
-	if !a.Game().Players[0].Mirror {
+	if !a.State().Players[0].Mirror {
 		t.Fatal("mirror shots lost on the next maze")
 	}
 	typeRunes(a, "xiddqd")
 	a.Tick()
-	if a.Game().Players[0].Mirror {
+	if a.State().Players[0].Mirror {
 		t.Fatal("typing IDDQD again did not turn it off")
 	}
 }
@@ -291,11 +291,11 @@ func TestGuessedHoldStopsAtWalls(t *testing.T) {
 		c.t = c.t.Add(TickDuration)
 		a.Tick()
 	}
-	if a.Game().PlayerEntity(0) < 0 {
+	if a.State().PlayerEntity(0) < 0 {
 		t.Fatal("a single tap walked the player into an electric wall")
 	}
-	e := a.Game().Ents[a.Game().PlayerEntity(0)]
-	if e.X == a.Game().Players[0].SpawnX {
+	e := a.State().Ents[a.State().PlayerEntity(0)]
+	if e.X == a.State().Players[0].SpawnX {
 		t.Fatal("the press did not move the player at all")
 	}
 }
@@ -313,7 +313,7 @@ func TestVTogglesClassicView(t *testing.T) {
 }
 
 func TestKeyboardLayouts(t *testing.T) {
-	press := func(a *Solo, ev term.Event) uint8 {
+	press := func(a *Game, ev term.Event) uint8 {
 		ev.Kind = term.EvPress
 		a.HandleEvent(ev)
 		return a.Input().Mask
@@ -339,7 +339,7 @@ func TestKeyboardLayouts(t *testing.T) {
 		a.HandleEvent(term.Event{Kind: term.EvPress, Key: term.KeyRune, Rune: r})
 	}
 	a.HandleEvent(term.Event{Kind: term.EvPress, Key: term.KeyEnter})
-	if a.Game() == nil || a.Game().Cfg.Skill() != "M5" {
+	if a.State() == nil || a.State().Cfg.Skill() != "M5" {
 		t.Fatal("Czech number row did not enter M5")
 	}
 }

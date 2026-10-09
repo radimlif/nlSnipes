@@ -1,13 +1,13 @@
 # name hash — regenerate with: go test ./core -run Golden -update
-new/A1/p1/seed1 7885037d
-random/A1/p1/seed1/2000 a53540de
-new/A1/p4/seed1 41f3cc34
-random/A1/p4/seed1/2000 32d8beb3
-new/M5/p1/seed1 ddd7ec64
-random/M5/p1/seed1/2000 5eb612d9
-new/M5/p4/seed1 9f884d3c
-random/M5/p4/seed1/2000 e1341759
-new/Z9/p1/seed1 b33c49b1
-random/Z9/p1/seed1/2000 e63c602a
-new/Z9/p4/seed1 5c78537c
-random/Z9/p4/seed1/2000 ac214788
+new/A1/p1/seed1 7552f060
+random/A1/p1/seed1/2000 5156335b
+new/A1/p4/seed1 9abc6639
+random/A1/p4/seed1/2000 0ec9a0b2
+new/M5/p1/seed1 28a0af91
+random/M5/p1/seed1/2000 4cb9a1d4
+new/M5/p4/seed1 846a2acd
+random/M5/p4/seed1/2000 aacab4e0
+new/Z9/p1/seed1 9c30484c
+random/Z9/p1/seed1/2000 3f42bfc3
+new/Z9/p4/seed1 503754b1
+random/Z9/p4/seed1/2000 ccc00ee5
