@@ -37,13 +37,17 @@ type Camera struct{ X, Y int32 }
 // CameraOn centres the camera on entity e.
 func CameraOn(e *core.Entity) Camera { return Camera{e.X + 1, e.Y} }
 
-// DrawWorld draws the 40 × 22 viewport (frame rows HUDRows..Height-1).
-func DrawWorld(f *Frame, s *core.State, cam Camera) {
-	left := cam.X - Width/2
-	top := cam.Y - ViewRows/2
+// View is the frame rectangle the world is drawn into.
+type View struct{ X, Y, W, H int }
+
+// DrawWorld draws the maze and everything in it into view v of f, with the
+// camera tile at its centre.
+func DrawWorld(f *Frame, s *core.State, cam Camera, v View) {
+	left := cam.X - int32(v.W/2)
+	top := cam.Y - int32(v.H/2)
 	wall := func(x, y int32) bool { return s.Wall(x, y) }
-	for sy := 0; sy < ViewRows; sy++ {
-		for sx := 0; sx < Width; sx++ {
+	for sy := 0; sy < v.H; sy++ {
+		for sx := 0; sx < v.W; sx++ {
 			x, y := left+int32(sx), top+int32(sy)
 			c := Cell{Ch: ' ', Fg: LightGray}
 			if wall(x, y) {
@@ -62,7 +66,7 @@ func DrawWorld(f *Frame, s *core.State, cam Camera) {
 				}
 				c = Cell{Ch: wallGlyph[m], Fg: wallColour}
 			}
-			f[HUDRows+sy][sx] = c
+			f.Set(v.X+sx, v.Y+sy, c)
 		}
 	}
 	put := func(x, y int32, ch rune, fg uint8) {
@@ -74,8 +78,8 @@ func DrawWorld(f *Frame, s *core.State, cam Camera) {
 		if sy < 0 {
 			sy += core.GridHeight
 		}
-		if sx < Width && sy < ViewRows {
-			f[HUDRows+int(sy)][sx] = Cell{Ch: ch, Fg: fg}
+		if int(sx) < v.W && int(sy) < v.H {
+			f.Set(v.X+int(sx), v.Y+int(sy), Cell{Ch: ch, Fg: fg})
 		}
 	}
 	tick := s.Tick

@@ -20,6 +20,7 @@ type Options struct {
 	Skill     string           // skill code; empty = ask on the title screen
 	Seed      uint32           // 0 = derived from the clock
 	ScoreFile string           // "" = no high scores kept
+	Classic   bool             // start in the original 40 × 25 view
 	Now       func() time.Time // clock; nil = time.Now
 }
 
@@ -31,6 +32,9 @@ const (
 	screenResult
 )
 
+// cheatCode toggles mirror shots when typed during play.
+const cheatCode = "iddqd"
+
 // Solo is a single-player game in a terminal. Run drives it in real time;
 // tests call HandleEvent and Tick directly.
 type Solo struct {
@@ -38,21 +42,24 @@ type Solo struct {
 	r      term.Renderer
 	keys   *term.KeyState
 	opt    Options
-	frame  term.Frame
+	frame  *term.Frame
 	screen screen
 
 	skillInput string
 	errMsg     string
 
-	game     *core.State
-	cam      term.Camera
-	help     bool
-	msg      string
-	msgColor uint8
-	msgUntil uint32
-	resultT  int
-	scores   Scores
-	seq      uint32
+	game         *core.State
+	cam          term.Camera
+	classic      bool
+	help         bool
+	msg          string
+	msgColor     uint8
+	msgUntil     uint32
+	resultT      int
+	scores       Scores
+	seq          uint32
+	typed        string // last few letters typed in play, for the cheat code
+	mirrorWanted bool   // IDDQD state; kept across mazes
 }
 
 // NewSolo prepares a game on terminal t.
@@ -60,7 +67,8 @@ func NewSolo(t term.Terminal, opt Options) *Solo {
 	if opt.Now == nil {
 		opt.Now = time.Now
 	}
-	a := &Solo{t: t, opt: opt, keys: term.NewKeyState(t.RealReleases()), skillInput: "A1"}
+	a := &Solo{t: t, opt: opt, keys: term.NewKeyState(t.RealReleases()), skillInput: "A1",
+		classic: opt.Classic, frame: term.NewFrame(term.Width, term.Height)}
 	if opt.ScoreFile != "" {
 		a.scores = LoadScores(opt.ScoreFile)
 	} else {
@@ -78,7 +86,7 @@ func NewSolo(t term.Terminal, opt Options) *Solo {
 func (a *Solo) Game() *core.State { return a.game }
 
 // Frame returns the last drawn frame.
-func (a *Solo) Frame() *term.Frame { return &a.frame }
+func (a *Solo) Frame() *term.Frame { return a.frame }
 
 // Run plays in real time until the player quits or input ends.
 func Run(t term.Terminal, opt Options) error {
@@ -130,12 +138,25 @@ func (a *Solo) HandleEvent(ev term.Event) bool {
 		}
 		return false
 	}
-	switch ev.Key {
-	case term.KeyEsc:
+	switch {
+	case ev.Key == term.KeyEsc:
 		return true
-	case term.KeyF1:
+	case ev.Key == term.KeyF1:
 		a.help = !a.help
 		return false
+	case ev.Key == term.KeyRune && ev.Rune == 'v':
+		a.classic = !a.classic
+		return false
+	}
+	if ev.Key == term.KeyRune && ev.Rune >= 'a' && ev.Rune <= 'z' {
+		a.typed += string(ev.Rune)
+		if len(a.typed) > len(cheatCode) {
+			a.typed = a.typed[len(a.typed)-len(cheatCode):]
+		}
+		if a.typed == cheatCode {
+			a.mirrorWanted = !a.mirrorWanted
+			a.typed = ""
+		}
 	}
 	a.keys.Handle(ev, now)
 	return false
@@ -191,33 +212,74 @@ func (a *Solo) flash(msg string, colour uint8, ticks uint32) {
 	}
 }
 
-var (
-	idRight = term.KeyID{Key: term.KeyRight}
-	idLeft  = term.KeyID{Key: term.KeyLeft}
-	idDown  = term.KeyID{Key: term.KeyDown}
-	idUp    = term.KeyID{Key: term.KeyUp}
-	idFireR = term.KeyID{Key: term.KeyRune, Rune: 'd'}
-	idFireL = term.KeyID{Key: term.KeyRune, Rune: 'a'}
-	idFireD = term.KeyID{Key: term.KeyRune, Rune: 's'}
-	idFireU = term.KeyID{Key: term.KeyRune, Rune: 'w'}
-	idFast  = term.KeyID{Key: term.KeyRune, Rune: ' '}
-)
+func rk(r rune) term.KeyID { return term.KeyID{Key: term.KeyRune, Rune: r} }
+
+// bindings map keys to input bits. Arrows, the numpad and Home/PgUp/End/PgDn
+// move; W A S D fire straight and Q E Z C fire diagonally.
+var bindings = [...]struct {
+	id   term.KeyID
+	bits uint8
+}{
+	{term.KeyID{Key: term.KeyRight}, core.MoveR}, {term.KeyID{Key: term.KeyLeft}, core.MoveL},
+	{term.KeyID{Key: term.KeyDown}, core.MoveD}, {term.KeyID{Key: term.KeyUp}, core.MoveU},
+	{term.KeyID{Key: term.KeyHome}, core.MoveL | core.MoveU}, {term.KeyID{Key: term.KeyPgUp}, core.MoveR | core.MoveU},
+	{term.KeyID{Key: term.KeyEnd}, core.MoveL | core.MoveD}, {term.KeyID{Key: term.KeyPgDn}, core.MoveR | core.MoveD},
+	{rk('8'), core.MoveU}, {rk('2'), core.MoveD}, {rk('4'), core.MoveL}, {rk('6'), core.MoveR},
+	{rk('7'), core.MoveL | core.MoveU}, {rk('9'), core.MoveR | core.MoveU},
+	{rk('1'), core.MoveL | core.MoveD}, {rk('3'), core.MoveR | core.MoveD},
+	{rk('d'), core.FireR}, {rk('a'), core.FireL}, {rk('s'), core.FireD}, {rk('w'), core.FireU},
+	{rk('e'), core.FireR | core.FireU}, {rk('q'), core.FireL | core.FireU},
+	{rk('c'), core.FireR | core.FireD}, {rk('z'), core.FireL | core.FireD},
+}
+
+const moveBits = core.MoveR | core.MoveL | core.MoveD | core.MoveU
 
 // Input samples the keyboard into one tick's controls.
 func (a *Solo) Input() core.Input {
 	now := a.opt.Now()
 	var in core.Input
-	for _, m := range [...]struct {
-		id  term.KeyID
-		bit uint8
-	}{{idRight, core.MoveR}, {idLeft, core.MoveL}, {idDown, core.MoveD}, {idUp, core.MoveU},
-		{idFireR, core.FireR}, {idFireL, core.FireL}, {idFireD, core.FireD}, {idFireU, core.FireU}} {
-		if a.keys.Active(m.id, now) {
-			in.Mask |= m.bit
+	guessing := false
+	for _, b := range bindings {
+		if a.keys.Active(b.id, now) {
+			in.Mask |= b.bits
+			if b.bits&moveBits != 0 && a.keys.Guessing(b.id, now) {
+				guessing = true
+			}
 		}
 	}
-	in.Fast = a.keys.Active(idFast, now)
+	in.Fast = a.keys.Active(rk(' '), now)
+	// Without key releases a tap is indistinguishable from a hold until the
+	// first auto-repeat. Never let such a guess walk the player into a wall.
+	if guessing && a.touchesWall(in) {
+		in.Mask &^= moveBits
+	}
+	if a.game != nil && a.game.Players[0].Mirror != a.mirrorWanted {
+		in.ToggleMirror = true
+	}
 	return in
+}
+
+// touchesWall reports whether moving with in would put the player's body
+// against a wall within this tick's steps.
+func (a *Solo) touchesWall(in core.Input) bool {
+	i := a.game.PlayerEntity(0)
+	d, ok := core.MoveDir(in.Mask)
+	if i < 0 || !ok {
+		return false
+	}
+	e := a.game.Ents[i]
+	dx, dy := core.DirDelta(d)
+	steps := int32(1)
+	if in.Fast {
+		steps = 2
+	}
+	for k := int32(1); k <= steps; k++ {
+		x, y := e.X+dx*k, e.Y+dy*k
+		if a.game.Wall(x, y) || a.game.Wall(x+1, y) || a.game.Wall(x, y+1) || a.game.Wall(x+1, y+1) {
+			return true
+		}
+	}
+	return false
 }
 
 // Tick advances the game by one tick (when playing) and redraws the frame.
@@ -247,17 +309,22 @@ func (a *Solo) Tick() {
 // react turns this tick's events into messages and the bell.
 func (a *Solo) react() {
 	for _, ev := range a.game.Events {
+		if ev.Slot != 0 {
+			continue
+		}
 		switch ev.Kind {
 		case core.EvHiveDown:
-			if ev.Slot == 0 {
-				a.flash(fmt.Sprintf("HIVE DESTROYED! +50   %d to go", a.game.HivesAlive), term.Yellow, 2*core.TicksPerSecond)
-			}
+			a.flash(fmt.Sprintf("HIVE DESTROYED! +50   %d to go", a.game.HivesAlive), term.Yellow, 2*core.TicksPerSecond)
 		case core.EvPlayerDied:
-			if ev.Slot == 0 {
-				a.t.Bell()
-				if l := a.game.Players[0].Lives; l > 0 {
-					a.flash(fmt.Sprintf("OUCH! %d %s left", l, plural(l, "man", "men")), term.LightRed, 2*core.TicksPerSecond)
-				}
+			a.t.Bell()
+			if l := a.game.Players[0].Lives; l > 0 {
+				a.flash(fmt.Sprintf("OUCH! %d %s left", l, plural(l, "man", "men")), term.LightRed, 2*core.TicksPerSecond)
+			}
+		case core.EvMirror:
+			if a.game.Players[0].Mirror {
+				a.flash("IDDQD! Mirror shots: bank off walls", term.LightMagenta, 3*core.TicksPerSecond)
+			} else {
+				a.flash("Mirror shots off", term.LightGray, 2*core.TicksPerSecond)
 			}
 		}
 	}
@@ -285,5 +352,5 @@ func (a *Solo) saveScore() {
 }
 
 func (a *Solo) draw() error {
-	return term.Present(a.t, &a.r, &a.frame)
+	return term.Present(a.t, &a.r, a.frame)
 }

@@ -11,12 +11,19 @@ import (
 	"unicode/utf8"
 )
 
-// Screen size in characters: 3 HUD rows above a 40 × 22 viewport.
+// Classic screen size in characters: 3 HUD rows above a 40 × 22 viewport,
+// the original's 40 × 25 text mode. Frames can be larger (the full view).
 const (
 	Width    = 40
 	Height   = 25
 	HUDRows  = 3
 	ViewRows = Height - HUDRows
+)
+
+// Largest useful frame: wider or taller would show the toroidal maze twice.
+const (
+	MaxWidth  = 120
+	MaxHeight = HUDRows + 110
 )
 
 // CGA colour indices, as the original used them.
@@ -45,27 +52,50 @@ type Cell struct {
 	Fg, Bg uint8
 }
 
-// Frame is a full screen.
-type Frame [Height][Width]Cell
+// Frame is a screen of W × H cells.
+type Frame struct {
+	W, H  int
+	Cells []Cell
+}
+
+// NewFrame returns a cleared frame.
+func NewFrame(w, h int) *Frame {
+	f := &Frame{}
+	f.Resize(w, h)
+	return f
+}
+
+// Resize changes the frame size and clears it.
+func (f *Frame) Resize(w, h int) {
+	f.W, f.H = w, h
+	if cap(f.Cells) < w*h {
+		f.Cells = make([]Cell, w*h)
+	}
+	f.Cells = f.Cells[:w*h]
+	f.Clear()
+}
 
 // Clear fills the frame with blank black cells.
 func (f *Frame) Clear() {
-	for y := range f {
-		for x := range f[y] {
-			f[y][x] = Cell{Ch: ' ', Fg: LightGray}
-		}
+	for i := range f.Cells {
+		f.Cells[i] = Cell{Ch: ' ', Fg: LightGray}
 	}
 }
 
+// Set writes one cell; positions outside the frame are ignored.
+func (f *Frame) Set(x, y int, c Cell) {
+	if x >= 0 && x < f.W && y >= 0 && y < f.H {
+		f.Cells[y*f.W+x] = c
+	}
+}
+
+// At returns the cell at (x, y).
+func (f *Frame) At(x, y int) Cell { return f.Cells[y*f.W+x] }
+
 // Text writes s at (x, y) in the given colours, clipped to the frame.
 func (f *Frame) Text(x, y int, s string, fg, bg uint8) {
-	if y < 0 || y >= Height {
-		return
-	}
 	for _, r := range s {
-		if x >= 0 && x < Width {
-			f[y][x] = Cell{Ch: r, Fg: fg, Bg: bg}
-		}
+		f.Set(x, y, Cell{Ch: r, Fg: fg, Bg: bg})
 		x++
 	}
 }
@@ -73,7 +103,7 @@ func (f *Frame) Text(x, y int, s string, fg, bg uint8) {
 // Line returns row y as plain text (for tests).
 func (f *Frame) Line(y int) string {
 	var b []rune
-	for _, c := range f[y] {
+	for _, c := range f.Cells[y*f.W : (y+1)*f.W] {
 		b = append(b, c.Ch)
 	}
 	return string(b)
@@ -88,6 +118,7 @@ type Renderer struct {
 	valid    bool // prev reflects what is on the terminal
 	termW    int
 	termH    int
+	fw, fh   int // size of the last frame rendered
 	buf      bytes.Buffer
 	fg, bg   int
 	curX     int
@@ -99,16 +130,16 @@ type Renderer struct {
 func (r *Renderer) Invalidate() { r.valid = false }
 
 // Render returns the bytes that bring a terminal of size w × h from the
-// previous frame to f. The 40 × 25 frame is centred and never scaled.
+// previous frame to f. The frame is centred and never scaled.
 func (r *Renderer) Render(f *Frame, w, h int) []byte {
 	r.buf.Reset()
-	if w != r.termW || h != r.termH {
-		r.termW, r.termH, r.valid = w, h, false
+	if w != r.termW || h != r.termH || f.W != r.fw || f.H != r.fh {
+		r.termW, r.termH, r.fw, r.fh, r.valid = w, h, f.W, f.H, false
 	}
-	if w < Width || h < Height {
+	if w < f.W || h < f.H {
 		if !r.tooSmall || !r.valid {
 			r.buf.WriteString("\x1b[0m\x1b[2J\x1b[H")
-			r.buf.WriteString("Please enlarge the terminal to at least 40 x 25 (now " +
+			r.buf.WriteString("Please enlarge the terminal to at least " + strconv.Itoa(f.W) + " x " + strconv.Itoa(f.H) + " (now " +
 				strconv.Itoa(w) + " x " + strconv.Itoa(h) + ").")
 		}
 		r.tooSmall, r.valid = true, true
@@ -117,16 +148,16 @@ func (r *Renderer) Render(f *Frame, w, h int) []byte {
 	if r.tooSmall {
 		r.tooSmall, r.valid = false, false
 	}
-	ox, oy := (w-Width)/2, (h-Height)/2
+	ox, oy := (w-f.W)/2, (h-f.H)/2
 	if !r.valid {
 		r.buf.WriteString("\x1b[0m\x1b[2J")
 		r.fg, r.bg = -1, -1
 	}
 	r.curX, r.curY = -1, -1
-	for y := 0; y < Height; y++ {
-		for x := 0; x < Width; x++ {
-			c := f[y][x]
-			if r.valid && r.prev[y][x] == c {
+	for y := 0; y < f.H; y++ {
+		for x := 0; x < f.W; x++ {
+			c := f.Cells[y*f.W+x]
+			if r.valid && r.prev.Cells[y*f.W+x] == c {
 				continue
 			}
 			if r.curX != x || r.curY != y {
@@ -152,7 +183,9 @@ func (r *Renderer) Render(f *Frame, w, h int) []byte {
 			}
 		}
 	}
-	r.prev, r.valid = *f, true
+	r.prev.W, r.prev.H = f.W, f.H
+	r.prev.Cells = append(r.prev.Cells[:0], f.Cells...)
+	r.valid = true
 	return r.buf.Bytes()
 }
 

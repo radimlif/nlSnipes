@@ -115,6 +115,10 @@ func (s *State) stepPlayer(slot int, in Input) {
 	if !p.Joined {
 		return
 	}
+	if in.ToggleMirror {
+		p.Mirror = !p.Mirror
+		s.emit(EvMirror, p.SpawnX, p.SpawnY, int8(slot))
+	}
 	i := s.PlayerEntity(slot)
 	if i < 0 {
 		if p.Respawn > 0 {
@@ -247,7 +251,10 @@ func (s *State) fire(i int, d uint8) {
 		return
 	}
 	var bounces uint8
-	if s.Cfg.Bounce && d&1 == 1 {
+	switch {
+	case s.Players[owner].Mirror:
+		bounces = MirrorBounces
+	case s.Cfg.Bounce && d&1 == 1:
 		bounces = uint8(1 + s.Rng.Mask(7))
 	}
 	s.emit(EvShot, bx, by, owner)
@@ -279,7 +286,7 @@ func (s *State) stepBullet(i int) {
 		e := &s.Ents[i]
 		dx, dy := DirDelta(e.Dir)
 		if s.Wall(e.X+dx, e.Y+dy) {
-			if e.Bounces == 0 || e.Dir&1 == 0 {
+			if e.Bounces == 0 {
 				s.remove(i)
 				return
 			}

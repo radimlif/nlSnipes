@@ -288,3 +288,53 @@ func TestInvariantsHoldInRandomGames(t *testing.T) {
 		}
 	}
 }
+
+func TestMirrorShotsBounceLikeLight(t *testing.T) {
+	s := arena("A1", 1) // letter A: normally no bounce at all
+	s.addPlayer(0, 10, 10)
+	s.addHive(80, 80)
+	for y := int32(0); y < GridHeight; y++ {
+		s.setWall(20, y)
+	}
+	s.Step([MaxPlayers]Input{{ToggleMirror: true}})
+	if !s.Players[0].Mirror {
+		t.Fatal("toggle did not enable mirror shots")
+	}
+	step(s, 4, Input{}) // let the cooldown run out
+	step(s, 1, Input{Mask: FireR})
+	step(s, 4, Input{})
+	var b *Entity
+	for i := range s.Ents {
+		if s.Ents[i].Kind == KindBullet {
+			b = &s.Ents[i]
+		}
+	}
+	if b == nil || b.Dir != DirW || b.Bounces != MirrorBounces-1 {
+		t.Fatalf("flat hit should come straight back: %+v", b)
+	}
+	s.Step([MaxPlayers]Input{{ToggleMirror: true}})
+	if s.Players[0].Mirror {
+		t.Fatal("second toggle did not disable mirror shots")
+	}
+}
+
+func TestMirrorDiagonalReflectsOnLetterA(t *testing.T) {
+	s := arena("A1", 1)
+	s.addPlayer(0, 10, 20)
+	s.addHive(80, 80)
+	for y := int32(0); y < GridHeight; y++ {
+		s.setWall(16, y)
+	}
+	s.Players[0].Mirror = true
+	step(s, 1, Input{Mask: FireR | FireU})
+	step(s, 2, Input{})
+	for _, e := range s.Ents {
+		if e.Kind == KindBullet {
+			if e.Dir != DirNW {
+				t.Fatalf("reflected to %d, want NW", e.Dir)
+			}
+			return
+		}
+	}
+	t.Fatal("mirror bullet died on the wall")
+}

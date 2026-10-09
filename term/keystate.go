@@ -12,11 +12,11 @@ type KeyID struct {
 //
 // With real releases (Windows console, kitty protocol) that is exact. Other
 // terminals only send a press, then — after the OS repeat delay — a stream
-// of repeats, and nothing on release. There a key counts as held:
-//   - for a short tap window after the first press (so a tap moves a few
-//     tiles at most, which matters next to electric walls),
-//   - then not, while we wait to see whether repeats arrive,
-//   - then again for as long as repeats keep coming, until one is overdue.
+// of repeats, and nothing on release. There a key counts as held from the
+// press through the repeat delay (so a hold never stutters while the
+// repeats start), then for as long as repeats keep coming, until one is
+// overdue. Until the first repeat the hold is only a guess — Guessing says
+// so, and the game uses it to keep a tap from walking into a wall.
 //
 // The repeat delay and interval are learned from what the terminal sends.
 type KeyState struct {
@@ -36,7 +36,8 @@ type hold struct {
 
 // Emulation tuning.
 const (
-	tapWindow       = 220 * time.Millisecond // held after a first press, before repeats
+	delaySlack      = 80 * time.Millisecond // how long past the expected first repeat we keep waiting
+	certainFor      = 60 * time.Millisecond // a fresh press is certain for this long
 	defaultDelay    = 500 * time.Millisecond
 	defaultInterval = 50 * time.Millisecond
 )
@@ -96,7 +97,7 @@ func (k *KeyState) releaseGrace() time.Duration {
 
 func (k *KeyState) expired(h *hold, now time.Time) bool {
 	if h.repeats == 0 {
-		return now.Sub(h.down) > k.delay+150*time.Millisecond
+		return now.Sub(h.down) > k.delay+delaySlack
 	}
 	return now.Sub(h.last) > k.releaseGrace()
 }
@@ -114,10 +115,15 @@ func (k *KeyState) Held(id KeyID, now time.Time) bool {
 		delete(k.keys, id)
 		return false
 	}
-	if h.repeats == 0 {
-		return now.Sub(h.down) < min(tapWindow, k.delay)
-	}
 	return true
+}
+
+// Guessing reports whether key id counts as held only because repeats may
+// still be coming: emulation, no repeat seen yet, and the press is no
+// longer fresh.
+func (k *KeyState) Guessing(id KeyID, now time.Time) bool {
+	h := k.keys[id]
+	return !k.Real && h != nil && h.repeats == 0 && now.Sub(h.down) > certainFor && k.Held(id, now)
 }
 
 // Active is Held, except that a press since the last Active call counts

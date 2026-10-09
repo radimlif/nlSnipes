@@ -29,6 +29,10 @@ func TestParserSequences(t *testing.T) {
 			press(KeyEnter), press(KeyEsc), press(KeyTab), press(KeyBackspace), press(KeyCtrlC)}},
 		{"kitty private-use key ignored", "\x1b[57441u", nil},
 		{"kitty and DA answers", "\x1b[?0u\x1b[?62;22c", []Event{{Kind: EvKittySupported}, {Kind: EvDeviceAttributes}}},
+		{"home end pgup pgdn", "\x1b[H\x1b[F\x1bOH\x1b[1~\x1b[4~\x1b[5~\x1b[6~", []Event{
+			press(KeyHome), press(KeyEnd), press(KeyHome), press(KeyHome), press(KeyEnd), press(KeyPgUp), press(KeyPgDn)}},
+		{"kitty keypad", "\x1b[57406u\x1b[57423;1:3u\x1b[5;1:3~", []Event{
+			run(KeyRune, '7'), {Kind: EvRelease, Key: KeyHome}, {Kind: EvRelease, Key: KeyPgUp}}},
 		{"unknown csi ignored", "\x1b[200~x", []Event{run(KeyRune, 'x')}},
 	} {
 		var p Parser

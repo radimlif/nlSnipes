@@ -62,7 +62,14 @@ func (rp *Replay) MarshalBinary() ([]byte, error) {
 	for _, in := range rp.Inputs {
 		for _, p := range in {
 			b.u8(p.Mask)
-			b.bool(p.Fast)
+			var flags uint8
+			if p.Fast {
+				flags |= 1
+			}
+			if p.ToggleMirror {
+				flags |= 2
+			}
+			b.u8(flags)
 		}
 	}
 	return b, nil
@@ -95,7 +102,7 @@ func (rp *Replay) UnmarshalBinary(data []byte) error {
 	r.Inputs = make([][MaxPlayers]Input, n)
 	for i := range r.Inputs {
 		for p := range r.Inputs[i] {
-			r.Inputs[i][p] = Input{Mask: d.b[0], Fast: d.b[1] != 0}
+			r.Inputs[i][p] = Input{Mask: d.b[0], Fast: d.b[1]&1 != 0, ToggleMirror: d.b[1]&2 != 0}
 			d.b = d.b[2:]
 		}
 	}

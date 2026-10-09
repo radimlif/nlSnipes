@@ -16,6 +16,16 @@ type clock struct{ t time.Time }
 
 func (c *clock) now() time.Time { return c.t }
 
+// find returns the first frame row containing s, or "".
+func find(f *term.Frame, s string) string {
+	for y := 0; y < f.H; y++ {
+		if l := f.Line(y); strings.Contains(l, s) {
+			return l
+		}
+	}
+	return ""
+}
+
 func newTest(t *testing.T, skill string, releases bool) (*Solo, *term.Sim, *clock) {
 	t.Helper()
 	sim := term.NewSim(80, 30, releases)
@@ -125,15 +135,15 @@ func TestEmulatedKeysStillPlay(t *testing.T) {
 
 func TestTitleSkillPrompt(t *testing.T) {
 	a, _, _ := newTest(t, "", true)
-	if a.Game() != nil || !strings.Contains(a.Frame().Line(12), "A1") {
-		t.Fatalf("title should offer A1: %q", a.Frame().Line(12))
+	if a.Game() != nil || find(a.Frame(), "[ A1 ]") == "" {
+		t.Fatal("title should offer A1")
 	}
 	for _, ev := range []term.Event{{Kind: term.EvPress, Key: term.KeyRune, Rune: 'm'}, {Kind: term.EvPress, Key: term.KeyRune, Rune: '5'}} {
 		a.HandleEvent(ev)
 	}
 	a.Tick()
-	if !strings.Contains(a.Frame().Line(12), "M5") {
-		t.Fatalf("typed M5, title shows %q", a.Frame().Line(12))
+	if find(a.Frame(), "[ M5 ]") == "" {
+		t.Fatal("typed M5, title does not show it")
 	}
 	a.HandleEvent(term.Event{Kind: term.EvPress, Key: term.KeyEnter})
 	if a.Game() == nil || a.Game().Cfg.Skill() != "M5" {
@@ -152,8 +162,8 @@ func TestBadSkillStaysOnTitle(t *testing.T) {
 		t.Fatal("started without a digit")
 	}
 	a.Tick()
-	if !strings.Contains(a.Frame().Line(13), "digit") {
-		t.Fatalf("no hint: %q", a.Frame().Line(13))
+	if find(a.Frame(), "digit") == "" {
+		t.Fatal("no hint about the digit")
 	}
 }
 
@@ -168,8 +178,8 @@ func TestF1PausesAndShowsLegend(t *testing.T) {
 	if a.Game().Tick != tick {
 		t.Fatal("game ran while the legend was open")
 	}
-	if !strings.Contains(a.Frame().Line(5), "HOW TO PLAY") {
-		t.Fatalf("legend not drawn: %q", a.Frame().Line(5))
+	if find(a.Frame(), "HOW TO PLAY") == "" {
+		t.Fatal("legend not drawn")
 	}
 	a.HandleEvent(term.Event{Kind: term.EvPress, Key: term.KeyF1})
 	a.Tick()
@@ -204,7 +214,9 @@ func TestGateFrameRender(t *testing.T) {
 	if raceEnabled {
 		t.Skip("timing is meaningless under the race detector")
 	}
-	a, _, c := newTest(t, "Z9", true)
+	sim := term.NewSim(130, 120, true) // largest view: 120 × 113
+	c := &clock{t: time.Unix(0, 0)}
+	a := NewSolo(sim, Options{Skill: "Z9", Seed: 1, Now: c.now})
 	a.Game().Players[0].Lives = 1 << 20
 	var r term.Renderer
 	var ns []time.Duration
@@ -214,7 +226,7 @@ func TestGateFrameRender(t *testing.T) {
 		a.Game().Step([core.MaxPlayers]core.Input{{Mask: uint8(i * 37)}})
 		t0 := time.Now()
 		a.compose()
-		r.Render(a.Frame(), 120, 40)
+		r.Render(a.Frame(), 130, 120)
 		ns = append(ns, time.Since(t0))
 	}
 	slices.Sort(ns)
@@ -222,5 +234,80 @@ func TestGateFrameRender(t *testing.T) {
 	t.Logf("frame: p50 %v, p99 %v, max %v", ns[len(ns)/2], p99, ns[len(ns)-1])
 	if p99 >= 2*time.Millisecond {
 		t.Fatalf("frame render p99 %v ≥ 2 ms", p99)
+	}
+}
+
+func typeRunes(a *Solo, s string) {
+	for _, r := range s {
+		a.HandleEvent(term.Event{Kind: term.EvPress, Key: term.KeyRune, Rune: r})
+		a.HandleEvent(term.Event{Kind: term.EvRelease, Key: term.KeyRune, Rune: r})
+	}
+}
+
+func TestIDDQDTogglesMirrorShotsAndSurvivesNewMaze(t *testing.T) {
+	a, _, c := newTest(t, "A1", true)
+	typeRunes(a, "iddqd")
+	c.t = c.t.Add(TickDuration)
+	a.Tick()
+	if !a.Game().Players[0].Mirror {
+		t.Fatal("IDDQD did not turn on mirror shots")
+	}
+	if find(a.Frame(), "Mirror shots") == "" {
+		t.Fatal("no IDDQD message")
+	}
+	a.start() // next maze
+	a.Tick()
+	if !a.Game().Players[0].Mirror {
+		t.Fatal("mirror shots lost on the next maze")
+	}
+	typeRunes(a, "xiddqd")
+	a.Tick()
+	if a.Game().Players[0].Mirror {
+		t.Fatal("typing IDDQD again did not turn it off")
+	}
+}
+
+func TestDiagonalFireKeys(t *testing.T) {
+	for r, want := range map[rune]uint8{'q': core.FireL | core.FireU, 'e': core.FireR | core.FireU, 'z': core.FireL | core.FireD, 'c': core.FireR | core.FireD} {
+		a, _, _ := newTest(t, "A1", true)
+		a.HandleEvent(term.Event{Kind: term.EvPress, Key: term.KeyRune, Rune: r})
+		if got := a.Input().Mask; got != want {
+			t.Errorf("%c: mask %08b, want %08b", r, got, want)
+		}
+	}
+	a, _, _ := newTest(t, "A1", true)
+	a.HandleEvent(term.Event{Kind: term.EvPress, Key: term.KeyPgUp})
+	if got := a.Input().Mask; got != core.MoveR|core.MoveU {
+		t.Errorf("PgUp: mask %08b", got)
+	}
+}
+
+// Without key releases, a lone press must not carry the player into an
+// electric wall while the game is only guessing that the key is held.
+func TestGuessedHoldStopsAtWalls(t *testing.T) {
+	a, _, c := newTest(t, "M1", false)
+	a.HandleEvent(term.Event{Kind: term.EvPress, Key: term.KeyRight})
+	for i := 0; i < 12; i++ { // ~650 ms, past the default repeat delay; no repeats come
+		c.t = c.t.Add(TickDuration)
+		a.Tick()
+	}
+	if a.Game().PlayerEntity(0) < 0 {
+		t.Fatal("a single tap walked the player into an electric wall")
+	}
+	e := a.Game().Ents[a.Game().PlayerEntity(0)]
+	if e.X == a.Game().Players[0].SpawnX {
+		t.Fatal("the press did not move the player at all")
+	}
+}
+
+func TestVTogglesClassicView(t *testing.T) {
+	a, _, _ := newTest(t, "A1", true)
+	if a.Frame().W != 80 || a.Frame().H != 30 {
+		t.Fatalf("full view is %dx%d, want the terminal's 80x30", a.Frame().W, a.Frame().H)
+	}
+	a.HandleEvent(term.Event{Kind: term.EvPress, Key: term.KeyRune, Rune: 'v'})
+	a.Tick()
+	if a.Frame().W != term.Width || a.Frame().H != term.Height {
+		t.Fatalf("classic view is %dx%d", a.Frame().W, a.Frame().H)
 	}
 }

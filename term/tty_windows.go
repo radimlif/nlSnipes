@@ -74,6 +74,7 @@ func Open() (Terminal, error) {
 var vkKeys = map[uint16]Key{
 	0x25: KeyLeft, 0x26: KeyUp, 0x27: KeyRight, 0x28: KeyDown,
 	0x0D: KeyEnter, 0x1B: KeyEsc, 0x09: KeyTab, 0x08: KeyBackspace, 0x70: KeyF1,
+	0x21: KeyPgUp, 0x22: KeyPgDn, 0x23: KeyEnd, 0x24: KeyHome,
 }
 
 func (c *console) readLoop() {
@@ -110,6 +111,8 @@ func (c *console) readLoop() {
 				ev.Key, ev.Rune = KeyRune, rune(vk-'A'+'a')
 			case vk >= '0' && vk <= '9', vk == ' ':
 				ev.Key, ev.Rune = KeyRune, rune(vk)
+			case vk >= 0x60 && vk <= 0x69: // numpad digits
+				ev.Key, ev.Rune = KeyRune, rune('0'+vk-0x60)
 			default:
 				continue
 			}

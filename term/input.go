@@ -22,6 +22,10 @@ const (
 	KeyBackspace
 	KeyF1
 	KeyCtrlC
+	KeyHome
+	KeyEnd
+	KeyPgUp
+	KeyPgDn
 )
 
 // EventKind says what an input event is.
@@ -135,7 +139,18 @@ func press(k Key) Event {
 	return Event{Kind: EvPress, Key: k}
 }
 
-var ss3Keys = map[byte]Key{'A': KeyUp, 'B': KeyDown, 'C': KeyRight, 'D': KeyLeft, 'P': KeyF1}
+// Legacy "CSI n ~" keys (xterm, VT220 and rxvt variants).
+var tildeKeys = map[string]Key{"11": KeyF1, "1": KeyHome, "7": KeyHome, "4": KeyEnd, "8": KeyEnd, "5": KeyPgUp, "6": KeyPgDn}
+
+// Kitty keypad codes: KP_0..KP_9 and the keypad navigation keys.
+const kittyKP0 = 57399
+
+var kittyKeypad = map[int]Key{
+	57417: KeyLeft, 57418: KeyRight, 57419: KeyUp, 57420: KeyDown,
+	57421: KeyPgUp, 57422: KeyPgDn, 57423: KeyHome, 57424: KeyEnd,
+}
+
+var ss3Keys = map[byte]Key{'A': KeyUp, 'B': KeyDown, 'C': KeyRight, 'D': KeyLeft, 'P': KeyF1, 'H': KeyHome, 'F': KeyEnd}
 
 func lower(r rune) rune {
 	if r >= 'A' && r <= 'Z' {
@@ -206,10 +221,13 @@ func parseCSI(b []byte) (Event, int, bool) {
 		key = KeyLeft
 	case 'P':
 		key = KeyF1
+	case 'H':
+		key = KeyHome
+	case 'F':
+		key = KeyEnd
 	case '~':
-		if code, _, _ := strings.Cut(fields[0], ":"); code == "11" {
-			key = KeyF1
-		}
+		code, _, _ := strings.Cut(fields[0], ":")
+		key = tildeKeys[code]
 	case 'u':
 		code, _, _ := strings.Cut(fields[0], ":")
 		v, err := strconv.Atoi(code)
@@ -226,8 +244,13 @@ func parseCSI(b []byte) (Event, int, bool) {
 		case 127, 8:
 			key = KeyBackspace
 		default:
-			if v >= ' ' && v < 0xE000 { // below kitty's private-use functional keys
+			switch {
+			case v >= ' ' && v < 0xE000: // below kitty's private-use functional keys
 				key, r = KeyRune, lower(rune(v))
+			case v >= kittyKP0 && v <= kittyKP0+9: // keypad digits
+				key, r = KeyRune, rune('0'+v-kittyKP0)
+			default:
+				key = kittyKeypad[v]
 			}
 		}
 		if key == KeyRune && r == 'c' && len(fields) > 1 {

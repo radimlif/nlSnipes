@@ -37,14 +37,28 @@ func TestShortTapStillCountsOnce(t *testing.T) {
 	}
 }
 
-func TestEmulatedTapStopsQuickly(t *testing.T) {
+func TestEmulatedHoldDoesNotStutterBeforeRepeats(t *testing.T) {
 	k := NewKeyState(false)
 	k.Handle(ev(EvPress), at(0))
-	if !k.Held(up, at(100)) {
-		t.Fatal("not held right after press")
+	for ms := 0; ms <= 500; ms += 55 { // every tick up to the default repeat delay
+		if !k.Held(up, at(ms)) {
+			t.Fatalf("gap in the hold at %d ms", ms)
+		}
 	}
-	if k.Held(up, at(300)) {
-		t.Fatal("tap still held after the tap window")
+	if k.Guessing(up, at(30)) || !k.Guessing(up, at(300)) {
+		t.Fatal("a fresh press is certain; later, before repeats, it is a guess")
+	}
+	k.Handle(ev(EvPress), at(500)) // first repeat confirms the hold
+	if k.Guessing(up, at(520)) {
+		t.Fatal("still guessing after a repeat")
+	}
+}
+
+func TestEmulatedTapEndsAfterRepeatDelay(t *testing.T) {
+	k := NewKeyState(false)
+	k.Handle(ev(EvPress), at(0))
+	if k.Held(up, at(700)) {
+		t.Fatal("tap still held well after the repeat delay")
 	}
 }
 

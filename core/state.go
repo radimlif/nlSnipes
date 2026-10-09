@@ -40,6 +40,7 @@ type Player struct {
 	Score    int32
 	Respawn  int32 // ticks until the body reappears; 0 while alive or out
 	Cooldown int32 // ticks until the next shot
+	Mirror   bool  // mirror shots (the IDDQD toggle): every bullet bounces like light
 	SpawnX   int32
 	SpawnY   int32
 }
@@ -66,6 +67,7 @@ const (
 	EvSpawn
 	EvBounce
 	EvRespawn
+	EvMirror // a player toggled mirror shots
 )
 
 // Event is one thing that happened this tick. Events are not part of the hash.
@@ -79,6 +81,9 @@ type Event struct {
 type Input struct {
 	Mask uint8 // bits: 0 moveR, 1 moveL, 2 moveD, 3 moveU, 4 fireR, 5 fireL, 6 fireD, 7 fireU
 	Fast bool
+	// ToggleMirror flips mirror shots for this player on this tick. The
+	// terminal client sends it when the player types IDDQD.
+	ToggleMirror bool
 }
 
 // Input mask bits.
@@ -96,6 +101,7 @@ const (
 // Timing constants (ticks).
 const (
 	FireCooldown  = 4
+	MirrorBounces = 8 // wall bounces of a mirror shot
 	RespawnDelay  = 36
 	DebrisLife    = 18
 	SnipeMoveRate = 2

@@ -14,6 +14,7 @@ import (
 func main() {
 	version := flag.Bool("version", false, "print version and exit")
 	seed := flag.Uint("seed", 0, "maze seed (0 = random)")
+	classic := flag.Bool("classic", false, "start in the original 40 x 25 view (V toggles in game)")
 	flag.Usage = func() {
 		fmt.Fprintf(flag.CommandLine.Output(), "Usage: nlsnipes [flags] [skill code A1-Z9]\n")
 		flag.PrintDefaults()
@@ -23,7 +24,7 @@ func main() {
 		fmt.Println("nlsnipes", app.Version)
 		return
 	}
-	opt := app.Options{Skill: flag.Arg(0), Seed: uint32(*seed), ScoreFile: app.DefaultScorePath()}
+	opt := app.Options{Skill: flag.Arg(0), Seed: uint32(*seed), ScoreFile: app.DefaultScorePath(), Classic: *classic}
 
 	t, err := term.Open()
 	if err != nil {

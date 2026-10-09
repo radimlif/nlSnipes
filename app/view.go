@@ -14,15 +14,28 @@ var banner = [...]string{
 	"╝╚╝ ╩═╝ ╚═╝ ╝╚╝ ╩ ╩   ╚═╝ ╚═╝",
 }
 
+// frameSize is the classic 40 × 25, or as much of the terminal as is
+// useful (the full view, default).
+func (a *Solo) frameSize() (int, int) {
+	if a.classic {
+		return term.Width, term.Height
+	}
+	w, h := a.t.Size()
+	return min(max(w, term.Width), term.MaxWidth), min(max(h, term.Height), term.MaxHeight)
+}
+
 func (a *Solo) compose() {
-	f := &a.frame
+	w, h := a.frameSize()
+	if a.frame.W != w || a.frame.H != h {
+		a.frame.Resize(w, h)
+	}
+	f := a.frame
 	f.Clear()
-	switch a.screen {
-	case screenTitle:
+	if a.screen == screenTitle {
 		a.composeTitle()
 		return
 	}
-	term.DrawWorld(f, a.game, a.cam)
+	term.DrawWorld(f, a.game, a.cam, term.View{X: 0, Y: term.HUDRows, W: f.W, H: f.H - term.HUDRows})
 	a.composeHUD()
 	if a.help {
 		a.composeHelp()
@@ -32,33 +45,39 @@ func (a *Solo) compose() {
 	}
 }
 
+// centre writes s centred on row y of the frame.
 func centre(f *term.Frame, y int, s string, fg uint8) {
 	n := len([]rune(s))
-	f.Text((term.Width-n)/2, y, s, fg, term.Black)
+	f.Text((f.W-n)/2, y, s, fg, term.Black)
 }
 
-func (a *Solo) composeTitle() {
-	f := &a.frame
-	for i, l := range banner {
-		centre(f, 2+i, l, term.LightBlue)
-	}
-	centre(f, 5, "L I G H T", term.LightCyan)
-	centre(f, 7, "the 1982 maze shooter, back on your LAN", term.LightGray)
+// panelTop is the top row of an h-row panel centred in the frame.
+func (a *Solo) panelTop(h int) int { return (a.frame.H - h) / 2 }
 
-	centre(f, 10, "Skill level (A1 easy - Z9 brutal)", term.White)
+func (a *Solo) composeTitle() {
+	f := a.frame
+	y0 := a.panelTop(term.Height)
+	for i, l := range banner {
+		centre(f, y0+2+i, l, term.LightBlue)
+	}
+	centre(f, y0+5, "L I G H T", term.LightCyan)
+	centre(f, y0+7, "the 1982 maze shooter, back on your LAN", term.LightGray)
+
+	centre(f, y0+10, "Skill level (A1 easy - Z9 brutal)", term.White)
 	in := a.skillInput
 	if len(in) < 2 && (a.frameTick()/9)%2 == 0 {
 		in += "_"
 	}
-	centre(f, 12, fmt.Sprintf("[ %-2s ]", in), term.Yellow)
+	centre(f, y0+12, fmt.Sprintf("[ %-2s ]", in), term.Yellow)
 	if a.errMsg != "" {
-		centre(f, 13, a.errMsg, term.LightRed)
+		centre(f, y0+13, a.errMsg, term.LightRed)
 	} else {
-		centre(f, 13, "Enter to start  ·  Esc to quit", term.DarkGray)
+		centre(f, y0+13, "Enter to start  ·  Esc to quit", term.DarkGray)
 	}
 
-	centre(f, 15, "Arrows move   W A S D fire   Space fast", term.LightGray)
-	centre(f, 16, "Letter = tricks, digit = how many", term.DarkGray)
+	centre(f, y0+15, "Arrows move   Space fast", term.LightGray)
+	centre(f, y0+16, "W A S D fire   Q E Z C fire diagonally", term.LightGray)
+	centre(f, y0+17, "Letter = tricks, digit = how many", term.DarkGray)
 
 	if len(a.scores) > 0 {
 		var keys []string
@@ -66,14 +85,18 @@ func (a *Solo) composeTitle() {
 			keys = append(keys, k)
 		}
 		sort.Slice(keys, func(i, j int) bool { return a.scores[keys[i]] > a.scores[keys[j]] })
-		centre(f, 18, "Best scores", term.LightCyan)
+		parts := ""
 		for i, k := range keys[:min(len(keys), 3)] {
-			centre(f, 19+i, fmt.Sprintf("%s  %6d", k, a.scores[k]), term.White)
+			if i > 0 {
+				parts += "   "
+			}
+			parts += fmt.Sprintf("%s %d", k, a.scores[k])
 		}
+		centre(f, y0+19, "Best: "+parts, term.LightCyan)
 	}
 	if !a.keys.Real {
-		centre(f, 23, "Tip: for smoother controls play in", term.DarkGray)
-		centre(f, 24, "Windows, kitty, WezTerm, Ghostty, iTerm2", term.DarkGray)
+		centre(f, y0+22, "Tip: for smoother controls play in", term.DarkGray)
+		centre(f, y0+23, "Windows, kitty, WezTerm, Ghostty, iTerm2", term.DarkGray)
 	}
 }
 
@@ -81,7 +104,7 @@ func (a *Solo) composeTitle() {
 func (a *Solo) frameTick() int64 { return a.opt.Now().UnixMilli() / int64(core.TicksPerSecond*3) }
 
 func (a *Solo) composeHUD() {
-	f := &a.frame
+	f := a.frame
 	g := a.game
 	p := g.Players[0]
 	secs := int(g.Tick) / core.TicksPerSecond
@@ -102,21 +125,29 @@ func (a *Solo) composeHUD() {
 	put(1, "Hives ", fmt.Sprintf("%d/%d", g.HivesAlive, g.Cfg.Hives))
 
 	if a.msg != "" && g.Tick < a.msgUntil {
-		for i := 0; i < term.Width; i++ {
-			f[2][i] = term.Cell{Ch: ' ', Fg: a.msgColor}
+		for i := 0; i < f.W; i++ {
+			f.Set(i, 2, term.Cell{Ch: ' ', Fg: a.msgColor})
 		}
 		centre(f, 2, a.msg, a.msgColor)
 		return
 	}
-	for i := 0; i < term.Width; i++ {
-		f[2][i] = term.Cell{Ch: '─', Fg: term.Blue}
+	for i := 0; i < f.W; i++ {
+		f.Set(i, 2, term.Cell{Ch: '─', Fg: term.Blue})
 	}
 	f.Text(2, 2, fmt.Sprintf(" Snipes %d ", g.SnipesAlive), term.Green, term.Black)
-	f.Text(term.Width-11, 2, " F1 help ", term.DarkGray, term.Black)
+	if p.Mirror {
+		f.Text(15, 2, " MIRROR ", term.LightMagenta, term.Black)
+	}
+	hint := " F1 help "
+	if f.W > term.Width {
+		hint = " V classic view · F1 help "
+	}
+	f.Text(f.W-len([]rune(hint))-2, 2, hint, term.DarkGray, term.Black)
 }
 
-func (a *Solo) box(x0, y0, w, h int, fg uint8) {
-	f := &a.frame
+func (a *Solo) box(w, h int, fg uint8) (x0, y0 int) {
+	f := a.frame
+	x0, y0 = (f.W-w)/2, a.panelTop(h)
 	for y := y0; y < y0+h; y++ {
 		for x := x0; x < x0+w; x++ {
 			ch := ' '
@@ -134,22 +165,24 @@ func (a *Solo) box(x0, y0, w, h int, fg uint8) {
 			case x == x0 || x == x0+w-1:
 				ch = '║'
 			}
-			f[y][x] = term.Cell{Ch: ch, Fg: fg}
+			f.Set(x, y, term.Cell{Ch: ch, Fg: fg})
 		}
 	}
+	return x0, y0
 }
 
 func (a *Solo) composeHelp() {
-	f := &a.frame
-	a.box(2, 4, 36, 19, term.LightCyan)
-	centre(f, 5, "HOW TO PLAY  (paused)", term.White)
+	f := a.frame
+	x0, y0 := a.box(38, 21, term.LightCyan)
+	centre(f, y0+1, "HOW TO PLAY  (paused)", term.White)
 	rows := []struct {
 		glyph  string
 		colour uint8
 		text   string
 	}{
-		{"ôô", term.White, "you: arrows move, Space fast"},
-		{"○ ", term.Yellow, "your bullet: W A S D fire"},
+		{"ôô", term.White, "you: arrows, numpad, Home/PgUp/"},
+		{"  ", term.White, "End/PgDn move; Space fast"},
+		{"○ ", term.Yellow, "bullet: WASD straight, QEZC diag"},
 		{"┌┐", term.Yellow, "hive: shoot it, +50"},
 		{"☺→", term.Green, "snipe: +1, deadly to touch"},
 		{"☻ ", term.Green, "small snipe: +1, fast"},
@@ -157,24 +190,24 @@ func (a *Solo) composeHelp() {
 		{"══", term.LightBlue, "wall: deadly from letter M"},
 	}
 	for i, r := range rows {
-		f.Text(5, 7+i*2, r.glyph, r.colour, term.Black)
-		f.Text(9, 7+i*2, r.text, term.LightGray, term.Black)
+		f.Text(x0+3, y0+3+i*2, r.glyph, r.colour, term.Black)
+		f.Text(x0+6, y0+3+i*2, r.text, term.LightGray, term.Black)
 	}
-	centre(f, 21, "F1 resume  ·  Esc quit", term.DarkGray)
+	centre(f, y0+19, "V view  ·  F1 resume  ·  Esc quit", term.DarkGray)
 }
 
 func (a *Solo) composeResult() {
-	f := &a.frame
+	f := a.frame
 	g := a.game
-	a.box(6, 8, 28, 9, term.Yellow)
+	_, y0 := a.box(28, 9, term.Yellow)
 	title, colour := "MAZE CLEARED!", term.LightGreen
 	if g.Phase == core.PhaseLost {
 		title, colour = "GAME OVER", term.LightRed
 	}
-	centre(f, 10, title, colour)
-	centre(f, 12, fmt.Sprintf("Score %d", g.Players[0].Score), term.White)
+	centre(f, y0+2, title, colour)
+	centre(f, y0+4, fmt.Sprintf("Score %d", g.Players[0].Score), term.White)
 	if best := a.scores[g.Cfg.Skill()]; g.Players[0].Score >= best && best > 0 {
-		centre(f, 13, "NEW BEST!", term.Yellow)
+		centre(f, y0+5, "NEW BEST!", term.Yellow)
 	}
-	centre(f, 15, fmt.Sprintf("Enter: next maze (%ds)", (a.resultT+core.TicksPerSecond-1)/core.TicksPerSecond), term.DarkGray)
+	centre(f, y0+7, fmt.Sprintf("Enter: next maze (%ds)", (a.resultT+core.TicksPerSecond-1)/core.TicksPerSecond), term.DarkGray)
 }
