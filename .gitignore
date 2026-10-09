@@ -1,0 +1,7 @@
+/dist/
+/nlsnipes
+/nlsnipes.exe
+/simbot
+*.test
+*.out
+highscores.json

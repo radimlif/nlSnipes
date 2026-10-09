@@ -1,0 +1,29 @@
+version: 2
+
+project_name: nlsnipes
+
+builds:
+  - id: nlsnipes
+    main: ./cmd/nlsnipes
+    binary: nlsnipes
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X github.com/radimlif/nlSnipes/app.Version={{ .Version }}
+    targets:
+      - windows_amd64
+      - darwin_arm64
+      - darwin_amd64
+      - linux_amd64
+
+archives:
+  - formats: [binary]
+    name_template: "nlsnipes-{{ .Os }}-{{ .Arch }}"
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  use: github
