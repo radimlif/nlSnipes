@@ -13,6 +13,15 @@ Read before writing code:
 
 The current milestone is the open GitHub issue labelled `milestone`.
 
+## The goal: a game people enjoy
+Passing gates is necessary, not sufficient — the owner's standing ask is "make the game fun".
+- Where a rule is open, prefer the faithful reading that plays better; record it in an ADR.
+- Keep the difficulty curve sane: A is welcoming, Z is brutal, no cliffs between neighbours
+  (check with `simbot` across letters).
+- From L2 on, invest in feel: input that responds on the next tick, unmistakable feedback for
+  hits, deaths and hive kills, a HUD you can read at a glance.
+- Before a milestone's PR, play it by hand and list in the PR what felt off and what you fixed.
+
 ## Hard rules
 1. `core` is pure: standard library only, and not even `math/rand`, `time`, `os` or `net`.
    Integer math only — no floats. Every random draw goes through the state's own PRNG.
