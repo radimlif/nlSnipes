@@ -32,14 +32,66 @@ func TestMazeConnectedFor1000Seeds(t *testing.T) {
 		if n := connectedCells(&m); n != NumCells {
 			t.Fatalf("seed %d: only %d of %d cells reachable", seed, n, NumCells)
 		}
-		walls := 0
-		for _, c := range m {
-			walls += int(c&wallN) + int(c&wallW)>>1
+	}
+}
+
+func cellDistances(m *Maze, from int32) [NumCells]int32 {
+	var d [NumCells]int32
+	for i := range d {
+		d[i] = -1
+	}
+	d[from] = 0
+	q := []int32{from}
+	for len(q) > 0 {
+		c := q[0]
+		q = q[1:]
+		for k := 0; k < 4; k++ {
+			if n := cellNeighbour(c, k); m.Open(c, k) && d[n] < 0 {
+				d[n] = d[c] + 1
+				q = append(q, n)
+			}
 		}
-		// A spanning tree opens NumCells-1 of the 2*NumCells walls, then 3–5 more go.
-		if open := 2*NumCells - walls; open < NumCells-1+3 || open > NumCells-1+5 {
-			t.Fatalf("seed %d: %d walls open, want %d..%d", seed, open, NumCells+2, NumCells+4)
+	}
+	return d
+}
+
+// TestMazeIsEasyToGetAround pins the playability targets from ADR 0007:
+// short detours, few dead ends, nothing far away.
+func TestMazeIsEasyToGetAround(t *testing.T) {
+	var detour, pairs float64
+	deadEnds, maxDist := 0, int32(0)
+	const seeds = 200
+	for seed := uint32(0); seed < seeds; seed++ {
+		r := NewRand(seed)
+		m := GenerateMaze(&r)
+		for c := int32(0); c < NumCells; c++ {
+			open := 0
+			for k := 0; k < 4; k++ {
+				if m.Open(c, k) {
+					open++
+				}
+			}
+			if open == 1 {
+				deadEnds++
+			}
 		}
+		for i := 0; i < 8; i++ {
+			a := int32(r.Int(NumCells))
+			d := cellDistances(&m, a)
+			for b := int32(0); b < NumCells; b++ {
+				man := abs32(WrapDelta(a%CellsX, b%CellsX, CellsX)) + abs32(WrapDelta(a/CellsX, b/CellsX, CellsY))
+				if man >= 3 {
+					detour += float64(d[b]) / float64(man)
+					pairs++
+				}
+				maxDist = max(maxDist, d[b])
+			}
+		}
+	}
+	avg, deadPct := detour/pairs, 100*float64(deadEnds)/float64(seeds*NumCells)
+	t.Logf("detour ×%.2f, dead ends %.1f%%, farthest %d cells", avg, deadPct, maxDist)
+	if avg > 1.5 || deadPct > 8 || maxDist > 40 {
+		t.Fatalf("maze too closed: detour ×%.2f (≤ 1.5), dead ends %.1f%% (≤ 8), farthest %d (≤ 40)", avg, deadPct, maxDist)
 	}
 }
 

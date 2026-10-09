@@ -35,15 +35,18 @@ Passing gates is necessary, not sufficient — the owner's standing ask is "make
    n is merged.
 5. Never lower or skip a gate. If blocked, open an issue labelled `blocked` with evidence and stop.
 6. Record any choice the design docs don't settle as an ADR in docs/decisions/NNNN-slug.md.
-7. Dependencies: standard library plus `github.com/gdamore/tcell/v2` (in `term` only). Anything
-   else needs an ADR.
+7. Dependencies: standard library plus `golang.org/x/term` and `golang.org/x/sys` (in `term`
+   only; see ADR 0005 for why not tcell). Anything else needs an ADR. Keep `go.mod` at `go 1.23.0`:
+   never `go get …@latest` blindly — newer x/sys and x/term require newer Go (x/term v0.34.0 and
+   x/sys v0.35.0 are the last for 1.23).
 
 ## Layout
 - `core/`   deterministic simulation (L1); goldens in core/testdata/golden.txt (`go test ./core -run Golden -update`)
 - `bots/`   RandomBot, HunterBot, `Play` harness, L1 gate tests
 - `lan/`    UDP protocol: beacon/probe/join/welcome/input/snapshot/delta/bye, port 5108 (L3)
-- `term/`   tcell renderer 40×25 + key input → mask (L2)
-- `app/`    discover → host/join → play → migrate state machine (L2–L4)
+- `term/`   own terminal layer: ANSI renderer 40×25, input parser (VT + kitty protocol), Windows
+            console input, key-hold tracking/emulation, `Sim` for tests (L2)
+- `app/`    solo game loop, title/HUD/help/results, high scores (L2); LAN host/join/migrate (L3–L4)
 - `cmd/nlsnipes/` the game binary · `cmd/simbot/` headless bot games for CI
 - `tools/simcheck/` the similarity checker · `reference/` read-only submodule, never edit
 

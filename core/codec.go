@@ -6,7 +6,7 @@ import (
 	"hash/fnv"
 )
 
-const codecVersion = 1
+const codecVersion = 2
 
 type enc []byte
 
@@ -86,6 +86,7 @@ func (s *State) MarshalBinary() ([]byte, error) {
 		b.i32(p.Score)
 		b.i32(p.Respawn)
 		b.i32(p.Cooldown)
+		b.bool(p.Mirror)
 		b.i32(p.SpawnX)
 		b.i32(p.SpawnY)
 	}
@@ -145,6 +146,7 @@ func (s *State) UnmarshalBinary(data []byte) error {
 		p := &n.Players[i]
 		p.Joined = d.bool()
 		p.Lives, p.Score, p.Respawn, p.Cooldown = d.i32(), d.i32(), d.i32(), d.i32()
+		p.Mirror = d.bool()
 		p.SpawnX, p.SpawnY = d.i32(), d.i32()
 	}
 	n.Score, n.HivesAlive, n.SnipesAlive = d.i32(), d.i32(), d.i32()
