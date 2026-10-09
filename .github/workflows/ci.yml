@@ -35,8 +35,8 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-      - name: go test -race
-        run: go test -race ./...
+      - name: go test -race (short)
+        run: go test -race -short ./...
 
   sim:
     runs-on: ubuntu-latest
@@ -45,8 +45,13 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+      - name: L1 gates in full
+        run: go test -count=1 -run Gate -v ./bots
       - name: bot games
-        run: go run ./cmd/simbot
+        run: |
+          go run ./cmd/simbot -skill A1 -seeds 100 -ticks 5000 -min-win 90
+          go run ./cmd/simbot -skill M5 -players 4 -seeds 20
+          go run ./cmd/simbot -skill Z9 -players 4 -bot random -seeds 20 -ticks 10000
 
   similarity:
     runs-on: ubuntu-latest
