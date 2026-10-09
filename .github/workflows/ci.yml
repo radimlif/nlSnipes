@@ -45,8 +45,8 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-      - name: L1 gates in full
-        run: go test -count=1 -run Gate -v ./bots
+      - name: milestone gates in full
+        run: go test -count=1 -run Gate -v ./bots ./app ./lan
       - name: bot games
         run: |
           go run ./cmd/simbot -skill A1 -seeds 100 -ticks 5000 -min-win 90
