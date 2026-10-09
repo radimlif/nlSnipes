@@ -44,7 +44,11 @@ const (
 type Event struct {
 	Kind EventKind
 	Key  Key
-	Rune rune // lowercase for letters; set for KeyRune
+	Rune rune // the character typed, lowercase for letters; set for KeyRune
+	// Base is the key's position on a US layout ('z' for the bottom-left
+	// letter on QWERTY, QWERTZ and AZERTY alike), when the terminal reports
+	// it: kitty's alternate keys, Windows scan codes. 0 when unknown.
+	Base rune
 }
 
 // Parser turns raw terminal input bytes into events. It understands the
@@ -209,7 +213,7 @@ func parseCSI(b []byte) (Event, int, bool) {
 		}
 	}
 	var key Key
-	var r rune
+	var r, base rune
 	switch final {
 	case 'A':
 		key = KeyUp
@@ -229,8 +233,9 @@ func parseCSI(b []byte) (Event, int, bool) {
 		code, _, _ := strings.Cut(fields[0], ":")
 		key = tildeKeys[code]
 	case 'u':
-		code, _, _ := strings.Cut(fields[0], ":")
-		v, err := strconv.Atoi(code)
+		// "code:shifted:base" — base is the US-layout key (flag 4).
+		parts := strings.Split(fields[0], ":")
+		v, err := strconv.Atoi(parts[0])
 		if err != nil {
 			return Event{}, n, true
 		}
@@ -253,14 +258,21 @@ func parseCSI(b []byte) (Event, int, bool) {
 				key = kittyKeypad[v]
 			}
 		}
-		if key == KeyRune && r == 'c' && len(fields) > 1 {
+		if len(parts) > 2 {
+			if b, err := strconv.Atoi(parts[2]); err == nil && b >= ' ' && b < 0x7f {
+				base = lower(rune(b))
+			}
+		} else if key == KeyRune && r < 0x7f {
+			base = r // no alternate reported: the key is the same on a US layout
+		}
+		if key == KeyRune && base == 'c' && len(fields) > 1 {
 			if mods, _, _ := strings.Cut(fields[1], ":"); mods == "5" { // ctrl
-				key, r = KeyCtrlC, 0
+				key, r, base = KeyCtrlC, 0, 0
 			}
 		}
 	}
 	if key == KeyNone {
 		return Event{}, n, true
 	}
-	return Event{Kind: kind, Key: key, Rune: r}, n, true
+	return Event{Kind: kind, Key: key, Rune: r, Base: base}, n, true
 }

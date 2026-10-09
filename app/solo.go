@@ -123,7 +123,7 @@ func (a *Solo) HandleEvent(ev term.Event) bool {
 		return true
 	}
 	if ev.Kind == term.EvRelease || ev.Kind == term.EvRepeat {
-		a.keys.Handle(ev, now)
+		a.keys.Handle(physical(ev), now)
 		return false
 	}
 	switch a.screen {
@@ -158,8 +158,34 @@ func (a *Solo) HandleEvent(ev term.Event) bool {
 			a.typed = ""
 		}
 	}
-	a.keys.Handle(ev, now)
+	a.keys.Handle(physical(ev), now)
 	return false
+}
+
+// layoutFallback maps characters from common non-US layouts to the US key
+// in the same position, for terminals that report only the typed character:
+// QWERTZ's bottom-left Y, and the Czech number row.
+var layoutFallback = map[rune]rune{
+	'y': 'z',
+	'+': '1', 'ě': '2', 'š': '3', 'č': '4', 'ř': '5', 'ž': '6', 'ý': '7', 'á': '8', 'í': '9', 'é': '0',
+}
+
+// physical rewrites a key event to the key position the bindings use: the
+// US-layout base key when the terminal reports it, else the typed character
+// with layout fallbacks.
+func physical(ev term.Event) term.Event {
+	if ev.Key != term.KeyRune {
+		return ev
+	}
+	r := ev.Base
+	if r == 0 {
+		r = ev.Rune
+		if f, ok := layoutFallback[r]; ok {
+			r = f
+		}
+	}
+	ev.Rune, ev.Base = r, r
+	return ev
 }
 
 func (a *Solo) titleKey(ev term.Event) bool {
@@ -175,6 +201,9 @@ func (a *Solo) titleKey(ev term.Event) bool {
 		a.start()
 	case term.KeyRune:
 		r := ev.Rune
+		if d := physical(ev).Rune; d >= '0' && d <= '9' {
+			r = d // digit row on any layout (Czech types +ěščřžýáí there)
+		}
 		if r >= 'a' && r <= 'z' {
 			a.skillInput = strings.ToUpper(string(r))
 		} else if r >= '1' && r <= '9' && len(a.skillInput) == 1 {
@@ -214,8 +243,9 @@ func (a *Solo) flash(msg string, colour uint8, ticks uint32) {
 
 func rk(r rune) term.KeyID { return term.KeyID{Key: term.KeyRune, Rune: r} }
 
-// bindings map keys to input bits. Arrows, the numpad and Home/PgUp/End/PgDn
-// move; W A S D fire straight and Q E Z C fire diagonally.
+// bindings map key positions (US layout names) to input bits. Arrows, the
+// numpad and Home/PgUp/End/PgDn move; the 3 × 3 block Q W E / A S D / Z X C
+// fires in the direction of each key from S (S and X both fire down).
 var bindings = [...]struct {
 	id   term.KeyID
 	bits uint8
@@ -227,7 +257,7 @@ var bindings = [...]struct {
 	{rk('8'), core.MoveU}, {rk('2'), core.MoveD}, {rk('4'), core.MoveL}, {rk('6'), core.MoveR},
 	{rk('7'), core.MoveL | core.MoveU}, {rk('9'), core.MoveR | core.MoveU},
 	{rk('1'), core.MoveL | core.MoveD}, {rk('3'), core.MoveR | core.MoveD},
-	{rk('d'), core.FireR}, {rk('a'), core.FireL}, {rk('s'), core.FireD}, {rk('w'), core.FireU},
+	{rk('d'), core.FireR}, {rk('a'), core.FireL}, {rk('s'), core.FireD}, {rk('w'), core.FireU}, {rk('x'), core.FireD},
 	{rk('e'), core.FireR | core.FireU}, {rk('q'), core.FireL | core.FireU},
 	{rk('c'), core.FireR | core.FireD}, {rk('z'), core.FireL | core.FireD},
 }

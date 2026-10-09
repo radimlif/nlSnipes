@@ -311,3 +311,35 @@ func TestVTogglesClassicView(t *testing.T) {
 		t.Fatalf("classic view is %dx%d", a.Frame().W, a.Frame().H)
 	}
 }
+
+func TestKeyboardLayouts(t *testing.T) {
+	press := func(a *Solo, ev term.Event) uint8 {
+		ev.Kind = term.EvPress
+		a.HandleEvent(ev)
+		return a.Input().Mask
+	}
+	// Czech QWERTZ in a terminal that reports base keys: the bottom-left
+	// key types 'y' but sits where US has 'z'.
+	a, _, _ := newTest(t, "A1", true)
+	if m := press(a, term.Event{Key: term.KeyRune, Rune: 'y', Base: 'z'}); m != core.FireL|core.FireD {
+		t.Errorf("QWERTZ bottom-left with base key: %08b", m)
+	}
+	// Same keyboard, legacy terminal: only 'y' arrives.
+	a, _, _ = newTest(t, "A1", false)
+	if m := press(a, term.Event{Key: term.KeyRune, Rune: 'y'}); m != core.FireL|core.FireD {
+		t.Errorf("QWERTZ bottom-left without base key: %08b", m)
+	}
+	a, _, _ = newTest(t, "A1", true)
+	if m := press(a, term.Event{Key: term.KeyRune, Rune: 'x'}); m != core.FireD {
+		t.Errorf("x: %08b", m)
+	}
+	// Czech number row types ř for 5.
+	a, _, _ = newTest(t, "", true)
+	for _, r := range []rune{'m', 'ř'} {
+		a.HandleEvent(term.Event{Kind: term.EvPress, Key: term.KeyRune, Rune: r})
+	}
+	a.HandleEvent(term.Event{Kind: term.EvPress, Key: term.KeyEnter})
+	if a.Game() == nil || a.Game().Cfg.Skill() != "M5" {
+		t.Fatal("Czech number row did not enter M5")
+	}
+}

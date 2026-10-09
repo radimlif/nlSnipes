@@ -24,7 +24,9 @@ func TestParserSequences(t *testing.T) {
 		{"kitty arrow press repeat release", "\x1b[1;1:1A\x1b[1;1:2A\x1b[1;1:3A", []Event{
 			{Kind: EvPress, Key: KeyUp}, {Kind: EvRepeat, Key: KeyUp}, {Kind: EvRelease, Key: KeyUp}}},
 		{"kitty letters", "\x1b[119u\x1b[119;1:3u\x1b[32;1:2u", []Event{
-			{Kind: EvPress, Key: KeyRune, Rune: 'w'}, {Kind: EvRelease, Key: KeyRune, Rune: 'w'}, {Kind: EvRepeat, Key: KeyRune, Rune: ' '}}},
+			{Kind: EvPress, Key: KeyRune, Rune: 'w', Base: 'w'}, {Kind: EvRelease, Key: KeyRune, Rune: 'w', Base: 'w'}, {Kind: EvRepeat, Key: KeyRune, Rune: ' ', Base: ' '}}},
+		{"kitty base layout key", "\x1b[121::122u\x1b[345::51;1:3u", []Event{
+			{Kind: EvPress, Key: KeyRune, Rune: 'y', Base: 'z'}, {Kind: EvRelease, Key: KeyRune, Rune: 'ř', Base: '3'}}},
 		{"kitty functional", "\x1b[13u\x1b[27u\x1b[9u\x1b[127u\x1b[99;5u", []Event{
 			press(KeyEnter), press(KeyEsc), press(KeyTab), press(KeyBackspace), press(KeyCtrlC)}},
 		{"kitty private-use key ignored", "\x1b[57441u", nil},
@@ -32,7 +34,7 @@ func TestParserSequences(t *testing.T) {
 		{"home end pgup pgdn", "\x1b[H\x1b[F\x1bOH\x1b[1~\x1b[4~\x1b[5~\x1b[6~", []Event{
 			press(KeyHome), press(KeyEnd), press(KeyHome), press(KeyHome), press(KeyEnd), press(KeyPgUp), press(KeyPgDn)}},
 		{"kitty keypad", "\x1b[57406u\x1b[57423;1:3u\x1b[5;1:3~", []Event{
-			run(KeyRune, '7'), {Kind: EvRelease, Key: KeyHome}, {Kind: EvRelease, Key: KeyPgUp}}},
+			{Kind: EvPress, Key: KeyRune, Rune: '7', Base: '7'}, {Kind: EvRelease, Key: KeyHome}, {Kind: EvRelease, Key: KeyPgUp}}},
 		{"unknown csi ignored", "\x1b[200~x", []Event{run(KeyRune, 'x')}},
 	} {
 		var p Parser

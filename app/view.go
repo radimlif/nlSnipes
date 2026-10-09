@@ -76,7 +76,7 @@ func (a *Solo) composeTitle() {
 	}
 
 	centre(f, y0+15, "Arrows move   Space fast", term.LightGray)
-	centre(f, y0+16, "W A S D fire   Q E Z C fire diagonally", term.LightGray)
+	centre(f, y0+16, "Fire: Q W E / A S D / Z X C around S", term.LightGray)
 	centre(f, y0+17, "Letter = tricks, digit = how many", term.DarkGray)
 
 	if len(a.scores) > 0 {
@@ -182,7 +182,7 @@ func (a *Solo) composeHelp() {
 	}{
 		{"ôô", term.White, "you: arrows, numpad, Home/PgUp/"},
 		{"  ", term.White, "End/PgDn move; Space fast"},
-		{"○ ", term.Yellow, "bullet: WASD straight, QEZC diag"},
+		{"○ ", term.Yellow, "fire: QWE/ASD/ZXC, away from S"},
 		{"┌┐", term.Yellow, "hive: shoot it, +50"},
 		{"☺→", term.Green, "snipe: +1, deadly to touch"},
 		{"☻ ", term.Green, "small snipe: +1, fast"},

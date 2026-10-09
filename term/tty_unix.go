@@ -17,8 +17,10 @@ const (
 	// terminal that knows the protocol answers the first before the second.
 	queryKitty = "\x1b[?u\x1b[c"
 	// Push flags 1 (disambiguate) + 2 (report press/repeat/release) +
-	// 8 (report every key as an escape code, so letters release too).
-	pushKitty = "\x1b[>11u"
+	// 4 (report the US-layout base key, so bindings follow key positions on
+	// any keyboard layout) + 8 (report every key as an escape code, so
+	// letters release too).
+	pushKitty = "\x1b[>15u"
 	popKitty  = "\x1b[<u"
 	// escTimeout is how long a lone ESC waits before it counts as the Esc key.
 	escTimeout = 40 * time.Millisecond

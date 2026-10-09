@@ -71,6 +71,15 @@ func Open() (Terminal, error) {
 	return c, nil
 }
 
+// scanBase maps PC set-1 scan codes (physical key positions) to the
+// character that position types on a US layout.
+var scanBase = map[uint16]rune{
+	0x02: '1', 0x03: '2', 0x04: '3', 0x05: '4', 0x06: '5', 0x07: '6', 0x08: '7', 0x09: '8', 0x0A: '9', 0x0B: '0',
+	0x10: 'q', 0x11: 'w', 0x12: 'e', 0x13: 'r', 0x14: 't', 0x15: 'y', 0x16: 'u', 0x17: 'i', 0x18: 'o', 0x19: 'p',
+	0x1E: 'a', 0x1F: 's', 0x20: 'd', 0x21: 'f', 0x22: 'g', 0x23: 'h', 0x24: 'j', 0x25: 'k', 0x26: 'l',
+	0x2C: 'z', 0x2D: 'x', 0x2E: 'c', 0x2F: 'v', 0x30: 'b', 0x31: 'n', 0x32: 'm', 0x39: ' ',
+}
+
 var vkKeys = map[uint16]Key{
 	0x25: KeyLeft, 0x26: KeyUp, 0x27: KeyRight, 0x28: KeyDown,
 	0x0D: KeyEnter, 0x1B: KeyEsc, 0x09: KeyTab, 0x08: KeyBackspace, 0x70: KeyF1,
@@ -102,17 +111,19 @@ func (c *console) readLoop() {
 				down[rec.virtualKey] = true
 			}
 			vk := rec.virtualKey
+			base := scanBase[rec.scanCode]
 			switch {
 			case vkKeys[vk] != KeyNone:
 				ev.Key = vkKeys[vk]
-			case vk == 'C' && rec.controlKeys&(leftCtrlPressed|rightCtrlPressed) != 0:
-				ev.Key = KeyCtrlC
-			case vk >= 'A' && vk <= 'Z':
-				ev.Key, ev.Rune = KeyRune, rune(vk-'A'+'a')
-			case vk >= '0' && vk <= '9', vk == ' ':
-				ev.Key, ev.Rune = KeyRune, rune(vk)
 			case vk >= 0x60 && vk <= 0x69: // numpad digits
-				ev.Key, ev.Rune = KeyRune, rune('0'+vk-0x60)
+				ev.Key, ev.Rune, ev.Base = KeyRune, rune('0'+vk-0x60), rune('0'+vk-0x60)
+			case base == 'c' && rec.controlKeys&(leftCtrlPressed|rightCtrlPressed) != 0:
+				ev.Key = KeyCtrlC
+			case base != 0:
+				ev.Key, ev.Base, ev.Rune = KeyRune, base, base
+				if ch := rune(rec.char); ch >= ' ' {
+					ev.Rune = lower(ch) // what the layout types, for text entry
+				}
 			default:
 				continue
 			}
