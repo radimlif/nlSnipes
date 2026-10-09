@@ -60,52 +60,101 @@ func (m *Maze) open(c int32, k int) {
 	}
 }
 
-// GenerateMaze grows a random spanning tree over the toroidal cell grid
-// (randomised Prim: join a random frontier cell to a random visited
-// neighbour), then knocks out 3–5 extra walls so there are some loops.
+// Maze tuning (docs/decisions/0007): the original's 64 extra wall
+// knock-outs, then most remaining dead ends get a second exit.
+const (
+	mazeKnockouts = 64
+	mazeBraid     = 12 // out of 16: chance a dead end is opened up
+)
+
+// GenerateMaze builds a connected toroidal maze with long corridors, plenty
+// of loops and few dead ends, so every part of it is reachable without long
+// detours.
 func GenerateMaze(r *Rand) Maze {
+	m := generateWalker(r, mazeKnockouts)
+	braid(r, &m, mazeBraid)
+	return m
+}
+
+// generateWalker grows the tree the way the original did: from a random
+// cell next to the tree, join it on, then keep walking straight runs of
+// 1–4 cells in random directions through untouched cells, carving as it
+// goes, until it runs into the tree; then start again elsewhere. That gives
+// long corridors rather than many short spurs. attempts random walls are
+// then knocked out (some already open), adding loops.
+func generateWalker(r *Rand, attempts int) Maze {
 	var m Maze
 	for i := range m {
 		m[i] = wallN | wallW
 	}
-	var visited, queued [NumCells]bool
-	frontier := make([]int32, 0, NumCells)
-	visit := func(c int32) {
-		visited[c] = true
-		for k := 0; k < 4; k++ {
-			n := cellNeighbour(c, k)
-			if !visited[n] && !queued[n] {
-				queued[n] = true
-				frontier = append(frontier, n)
-			}
-		}
-	}
-	visit(int32(r.Int(NumCells)))
-	var dirs [4]int
-	for len(frontier) > 0 {
-		i := r.Int(uint32(len(frontier)))
-		c := frontier[i]
-		frontier[i] = frontier[len(frontier)-1]
-		frontier = frontier[:len(frontier)-1]
-		nd := 0
-		for k := 0; k < 4; k++ {
-			if visited[cellNeighbour(c, k)] {
-				dirs[nd] = k
-				nd++
-			}
-		}
-		m.open(c, dirs[r.Int(uint32(nd))])
-		visit(c)
-	}
-	for extra := 3 + r.Int(3); extra > 0; {
+	var in [NumCells]bool
+	first := int32(r.Int(NumCells))
+	in[first] = true
+	left := NumCells - 1
+	for left > 0 {
 		c := int32(r.Int(NumCells))
-		w := wallN << r.Int(2)
-		if m[c]&w != 0 {
-			m[c] &^= w
-			extra--
+		if in[c] {
+			continue
 		}
+		// join c to the tree through the first tree neighbour, starting at a random side
+		k0 := int(r.Int(4))
+		joined := false
+		for i := 0; i < 4; i++ {
+			k := (k0 + i) & 3
+			if in[cellNeighbour(c, k)] {
+				m.open(c, k)
+				joined = true
+				break
+			}
+		}
+		if !joined {
+			continue
+		}
+		in[c] = true
+		left--
+		for {
+			k := int(r.Int(4))
+			run := 1 + int(r.Int(4))
+			for ; run > 0; run-- {
+				n := cellNeighbour(c, k)
+				if in[n] {
+					break
+				}
+				m.open(c, k)
+				in[n] = true
+				left--
+				c = n
+			}
+			if run > 0 {
+				break
+			}
+		}
+	}
+	for i := 0; i < attempts; i++ {
+		c := int32(r.Int(NumCells))
+		m.open(c, int(r.Int(4)))
 	}
 	return m
+}
+
+// braid gives each dead end a second exit with probability num/16, opening
+// the wall towards a random neighbour.
+func braid(r *Rand, m *Maze, num uint32) {
+	for c := int32(0); c < NumCells; c++ {
+		open, closed := 0, [4]int{}
+		nc := 0
+		for k := 0; k < 4; k++ {
+			if m.Open(c, k) {
+				open++
+			} else {
+				closed[nc] = k
+				nc++
+			}
+		}
+		if open == 1 && r.Int(16) < num {
+			m.open(c, closed[r.Int(uint32(nc))])
+		}
+	}
 }
 
 // Rasterize draws the maze as GridWidth × GridHeight tiles. A cell's north
