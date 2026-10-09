@@ -6,7 +6,10 @@ import (
 	"hash/fnv"
 )
 
-const codecVersion = 2
+const codecVersion = 3
+
+// entityBytes is the encoded size of one entity.
+const entityBytes = 22
 
 type enc []byte
 
@@ -50,8 +53,9 @@ func (d *dec) i32() int32 { return int32(d.u32()) }
 func (d *dec) bool() bool { return d.u8() != 0 }
 
 // MarshalBinary is the canonical encoding of everything that determines the
-// game's future: identical states encode to identical bytes. Events and the
-// occupancy index are derived and not included.
+// game's future: identical states encode to identical bytes. The tile grid,
+// events and the occupancy index are derived and not included (tiles are
+// rebuilt from the maze, which never changes during a game).
 func (s *State) MarshalBinary() ([]byte, error) {
 	b := make(enc, 0, 512+len(s.Tiles)+len(s.Ents)*24)
 	b.u8(codecVersion)
@@ -65,7 +69,6 @@ func (s *State) MarshalBinary() ([]byte, error) {
 	b.u8(s.Cfg.Players)
 	b.bool(s.Cfg.FriendlyFire)
 	b = append(b, s.Maze[:]...)
-	b = append(b, s.Tiles...)
 	b.u32(s.NextID)
 	b.u32(uint32(len(s.Ents)))
 	for _, e := range s.Ents {
@@ -114,15 +117,16 @@ func (s *State) UnmarshalBinary(data []byte) error {
 		return errors.New("core: invalid config in state")
 	}
 	n.Cfg = configFor(letter, digit, players, ff)
-	if len(d.b) < NumCells+GridWidth*GridHeight {
+	if len(d.b) < NumCells {
 		return errors.New("core: state truncated")
 	}
 	copy(n.Maze[:], d.b)
-	n.Tiles = append([]uint8(nil), d.b[NumCells:NumCells+GridWidth*GridHeight]...)
-	d.b = d.b[NumCells+GridWidth*GridHeight:]
+	d.b = d.b[NumCells:]
+	n.Tiles = make([]uint8, GridWidth*GridHeight)
+	n.Maze.Rasterize(n.Tiles)
 	n.NextID = d.u32()
 	count := d.u32()
-	if count > uint32(len(d.b))/24 {
+	if count > uint32(len(d.b))/entityBytes {
 		return errors.New("core: entity count exceeds data")
 	}
 	n.Ents = make([]Entity, count)
