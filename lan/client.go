@@ -139,6 +139,9 @@ func (c *Client) sendJoin() {
 	c.n.send(c.cfg.Host, Join{GameID: c.cfg.GameID, ClientID: c.cfg.ClientID, Nick: c.cfg.Nick})
 }
 
+// ID is the client's id.
+func (c *Client) ID() uint32 { return c.cfg.ClientID }
+
 // Slot is the client's player slot, or Spectator.
 func (c *Client) Slot() int8 { return c.slot }
 

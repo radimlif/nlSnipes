@@ -43,6 +43,10 @@ const (
 	screenHostLeft
 )
 
+// lobbyTicks is how long a host may sit on the title screen while others
+// wait before the game starts by itself; typing there restarts it.
+const lobbyTicks = 20 * core.TicksPerSecond
+
 // cheatCode toggles mirror shots when typed during play.
 const cheatCode = "iddqd"
 
@@ -77,6 +81,7 @@ type Game struct {
 	typed        string
 	mirrorWanted bool
 	epochSeen    uint32
+	lobbyT       int // host title countdown while others wait
 }
 
 func newGame(t term.Terminal, opt Options) *Game {
@@ -84,7 +89,7 @@ func newGame(t term.Terminal, opt Options) *Game {
 		opt.Now = time.Now
 	}
 	g := &Game{t: t, opt: opt, keys: term.NewKeyState(t.RealReleases()), skillInput: "A1",
-		classic: opt.Classic, frame: term.NewFrame(term.Width, term.Height)}
+		classic: opt.Classic, frame: term.NewFrame(term.Width, term.Height), lobbyT: lobbyTicks}
 	g.scores = Scores{}
 	if opt.ScoreFile != "" {
 		g.scores = LoadScores(opt.ScoreFile)
@@ -277,6 +282,7 @@ func physical(ev term.Event) term.Event {
 
 func (g *Game) titleKey(ev term.Event) bool {
 	g.errMsg = ""
+	g.lobbyT = lobbyTicks
 	switch ev.Key {
 	case term.KeyEsc:
 		return true
@@ -417,6 +423,8 @@ func (g *Game) Tick() {
 		g.client.Poll()
 	}
 	switch g.screen {
+	case screenTitle:
+		g.tickLobby()
 	case screenWaiting:
 		if g.client.HostGone() {
 			g.screen = screenHostLeft
@@ -447,6 +455,27 @@ func (g *Game) Tick() {
 		}
 	}
 	g.compose()
+}
+
+// tickLobby counts down while others wait for a host on its title screen,
+// then starts with the skill shown (A1 if it is incomplete).
+func (g *Game) tickLobby() {
+	if g.host == nil {
+		return
+	}
+	if g.host.Waiting() == 0 {
+		g.lobbyT = lobbyTicks
+		g.host.SetCountdown(0)
+		return
+	}
+	if g.lobbyT--; g.lobbyT <= 0 {
+		if _, err := core.NewConfig(g.skillInput, 1, true); err != nil {
+			g.skillInput = "A1"
+		}
+		g.start()
+		return
+	}
+	g.host.SetCountdown(uint8((g.lobbyT + core.TicksPerSecond - 1) / core.TicksPerSecond))
 }
 
 func (g *Game) tickPlay() {

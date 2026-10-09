@@ -151,12 +151,31 @@ func TestLobbyShowsWhoWeWaitFor(t *testing.T) {
 	if find(cg.Frame(), "waiting for radim") == "" || find(cg.Frame(), "guest  (you)") == "" {
 		t.Fatalf("lobby screen:\n%s", strings.Join(lines(cg.Frame()), "\n"))
 	}
-	if find(hg.Frame(), "1 player is waiting") == "" {
+	if find(hg.Frame(), "1 player waiting - press Enter to start") == "" {
 		t.Fatal("host title does not say a player is waiting")
+	}
+	if find(cg.Frame(), "starts by itself in") == "" {
+		t.Fatal("guest does not see the countdown")
 	}
 	hg.HandleEvent(term.Event{Kind: term.EvPress, Key: term.KeyEnter})
 	lanTicks(host, guests, 10)
 	if cg.screen != screenPlay {
 		t.Fatal("guest did not start playing when the host started")
+	}
+}
+
+func TestLobbyCountdownStartsTheGame(t *testing.T) {
+	opt := Options{Seed: 5, Nick: "radim", FriendlyFire: true, Listen: "127.0.0.1:0"}
+	hs := term.NewSim(100, 40, true)
+	hg, _ := NewHost(hs, opt)
+	defer hg.Close()
+	cs := term.NewSim(100, 40, true)
+	cg, _ := NewClient(cs, Options{Nick: "guest", Listen: "127.0.0.1:0"}, lan.Found{Addr: hg.host.Addr()}, 56)
+	defer cg.Close()
+	host, guests := &lanNode{hg, hs}, []*lanNode{{cg, cs}}
+	hg.HandleEvent(term.Event{Kind: term.EvPress, Key: term.KeyRune, Rune: 'm'}) // incomplete code
+	lanTicks(host, guests, lobbyTicks+10)
+	if hg.State() == nil || hg.State().Cfg.Skill() != "A1" || cg.screen != screenPlay {
+		t.Fatal("countdown did not start an A1 game for both")
 	}
 }

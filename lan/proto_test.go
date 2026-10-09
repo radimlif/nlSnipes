@@ -25,7 +25,7 @@ func sampleMessages() []any {
 		Tick{Epoch: 1, Records: []Record{rec, rec}},
 		Bye{ClientID: 2},
 		Resync{ClientID: 2},
-		Roster{Seats: []Seat{{Slot: 0, Nick: "host"}, {Slot: Spectator, ClientID: 9, Nick: "anna"}}},
+		Roster{Seats: []Seat{{Slot: 0, Nick: "host"}, {Slot: Spectator, ClientID: 9, Nick: "anna"}}, StartIn: 12},
 	}
 }
 

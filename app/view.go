@@ -97,10 +97,14 @@ func (g *Game) composeWaiting() {
 		if seat.Slot >= 0 {
 			line, colour = fmt.Sprintf("player %d  %s", seat.Slot+1, seat.Nick), term.PlayerColours[seat.Slot]
 		}
-		if seat.ClientID != 0 && seat.Slot == g.client.Slot() && seat.Nick == g.opt.Nick {
+		if seat.ClientID == g.client.ID() {
 			line += "  (you)"
 		}
 		centre(f, y, line, colour)
+		y++
+	}
+	if r.StartIn > 0 {
+		centre(f, y+1, fmt.Sprintf("starts by itself in %ds", r.StartIn), term.Yellow)
 		y++
 	}
 	centre(f, y+1, "Esc to quit", term.DarkGray)
@@ -127,12 +131,14 @@ func (g *Game) composeTitle() {
 	centre(f, y0+15, "Arrows move   Space fast", term.LightGray)
 	centre(f, y0+16, "Fire: Q W E / A S D / Z X C around S", term.LightGray)
 	if g.host != nil {
-		waiting := len(g.host.Roster().Seats) - 1
-		msg := "Others on the LAN can join: just start the game"
-		if waiting > 0 {
-			msg = fmt.Sprintf("%d %s waiting to play", waiting, plural(int32(waiting), "player is", "players are"))
+		if waiting := g.host.Waiting(); waiting > 0 {
+			secs := (g.lobbyT + core.TicksPerSecond - 1) / core.TicksPerSecond
+			call := fmt.Sprintf(" %d %s waiting - press Enter to start ", waiting, plural(int32(waiting), "player", "players"))
+			f.Text((f.W-len([]rune(call)))/2, y0+8, call, term.Black, term.Yellow)
+			centre(f, y0+17, fmt.Sprintf("starting by itself in %ds", secs), term.Yellow)
+		} else {
+			centre(f, y0+17, "Others on the LAN can join any time", term.LightGreen)
 		}
-		centre(f, y0+17, msg, term.LightGreen)
 	}
 
 	if len(g.scores) > 0 {

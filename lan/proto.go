@@ -138,9 +138,12 @@ type Seat struct {
 	Nick     string
 }
 
-// Roster lists who is in the game, players by slot then spectators in queue order.
+// Roster lists who is in the game, players by slot then spectators in
+// queue order. StartIn counts down the seconds until a host waiting on its
+// title screen starts the game anyway (0 = no countdown).
 type Roster struct {
-	Seats []Seat
+	Seats   []Seat
+	StartIn uint8
 }
 
 // ErrBadPacket is returned for anything that is not a valid message.
@@ -292,6 +295,7 @@ func Encode(m any) []byte {
 		w.u32(m.ClientID)
 	case Roster:
 		w = header(TRoster)
+		w.u8(m.StartIn)
 		seats := m.Seats
 		if len(seats) > MaxRoster {
 			seats = seats[:MaxRoster]
@@ -390,6 +394,7 @@ func Decode(b []byte) (any, error) {
 		m = Resync{ClientID: r.u32()}
 	case TRoster:
 		var v Roster
+		v.StartIn = r.u8()
 		n := int(r.u8())
 		if n > MaxRoster {
 			return nil, ErrBadPacket

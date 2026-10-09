@@ -59,6 +59,8 @@ type Host struct {
 	// rejoin lists slots emptied by reseat this tick; their new player
 	// joins on the next tick, after the leave has been applied.
 	rejoin []int
+	// startIn is the lobby countdown shown to waiting clients, in seconds.
+	startIn uint8
 }
 
 // hostSeat marks slot 0 as the host's own.
@@ -108,7 +110,7 @@ func (h *Host) Start(skill string, seed uint32) error {
 	h.state = core.NewGame(cfg, seed)
 	h.epoch++
 	h.records = nil
-	h.seats[0], h.rejoin = hostSeat, nil
+	h.seats[0], h.rejoin, h.startIn = hostSeat, nil, 0
 	for slot := 1; slot < core.MaxPlayers; slot++ {
 		h.join[slot], h.leave[slot] = false, false
 		if h.seats[slot] == nil && len(h.queue) > 0 {
@@ -352,9 +354,21 @@ func (h *Host) sendRoster() {
 	}
 }
 
+// SetCountdown tells waiting clients how many seconds until the game
+// starts (0 = no countdown).
+func (h *Host) SetCountdown(secs uint8) {
+	if secs != h.startIn {
+		h.startIn = secs
+		h.sendRoster()
+	}
+}
+
+// Waiting is how many others are in the game or waiting to join it.
+func (h *Host) Waiting() int { return len(h.peers) }
+
 // Roster lists the host, seated players and spectators.
 func (h *Host) Roster() Roster {
-	var r Roster
+	r := Roster{StartIn: h.startIn}
 	for slot, p := range h.seats {
 		switch {
 		case p == hostSeat:
