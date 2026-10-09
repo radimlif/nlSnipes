@@ -45,9 +45,7 @@ func Launch(t term.Terminal, opt Options) (*Game, error) {
 	splash.composeMessage("Looking for a game on the LAN...", "")
 	splash.draw()
 
-	var idb [4]byte
-	rand.Read(idb[:])
-	id := binary.LittleEndian.Uint32(idb[:]) | 1
+	id := newClientID()
 	found, ok, err := lan.Discover(lan.GameID(opt.GameName), id, opt.HostAddr, DiscoverTimeout)
 	if err != nil {
 		return nil, err
@@ -56,4 +54,11 @@ func Launch(t term.Terminal, opt Options) (*Game, error) {
 		return NewClient(t, opt, found, id)
 	}
 	return NewHost(t, opt)
+}
+
+// newClientID is a random non-zero id for this instance.
+func newClientID() uint32 {
+	var b [4]byte
+	rand.Read(b[:])
+	return binary.LittleEndian.Uint32(b[:]) | 1
 }

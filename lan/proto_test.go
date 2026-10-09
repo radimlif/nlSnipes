@@ -1,6 +1,7 @@
 package lan
 
 import (
+	"net/netip"
 	"reflect"
 	"testing"
 
@@ -14,7 +15,7 @@ func sampleMessages() []any {
 	rec.Inputs[3] = core.Input{Leave: true}
 	return []any{
 		Probe{GameID: 1, ClientID: 2},
-		Beacon{GameID: 1, Skill: "M5", Tick: 99, Players: 3, Spectators: 2},
+		Beacon{GameID: 1, Skill: "M5", Tick: 99, Players: 3, Spectators: 2, Port: 50123},
 		Beacon{GameID: 1},
 		Join{GameID: 1, ClientID: 2, Nick: "radim"},
 		Welcome{ClientID: 2, Slot: 3},
@@ -25,7 +26,8 @@ func sampleMessages() []any {
 		Tick{Epoch: 1, Records: []Record{rec, rec}},
 		Bye{ClientID: 2},
 		Resync{ClientID: 2},
-		Roster{Seats: []Seat{{Slot: 0, Nick: "host"}, {Slot: Spectator, ClientID: 9, Nick: "anna"}}, StartIn: 12},
+		Roster{HostID: 4, Seats: []Seat{{Slot: 0, ClientID: 4, Nick: "host"},
+			{Slot: Spectator, ClientID: 9, Nick: "anna", Addr: netip.MustParseAddrPort("192.168.1.20:50111")}}, StartIn: 12},
 	}
 }
 

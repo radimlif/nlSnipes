@@ -58,7 +58,11 @@ func Discover(gameID, clientID uint32, target string, timeout time.Duration) (Fo
 		for _, pk := range n.wait(50 * time.Millisecond) {
 			if m, err := Decode(pk.data); err == nil {
 				if b, ok := m.(Beacon); ok && b.GameID == gameID {
-					return Found{Addr: pk.from, Beacon: b}, true, nil
+					addr := pk.from
+					if b.Port != 0 { // answered by a migrated host's discovery socket
+						addr = netip.AddrPortFrom(addr.Addr(), b.Port)
+					}
+					return Found{Addr: addr, Beacon: b}, true, nil
 				}
 			}
 		}
@@ -115,7 +119,16 @@ type Client struct {
 	quiet  int // ticks since the last keep-alive
 	behind int // ticks we have known we are out of step
 	events []core.Event
-	Stats  ClientStats
+
+	// host migration
+	hostID    uint32          // id of the host we follow
+	lastHeard time.Time       // last packet from the host
+	bye       bool            // the host said goodbye
+	tried     map[uint32]bool // hosts that failed us
+	adoptNext bool            // take the next snapshot whatever its tick (new host)
+	promoted  bool            // this client became the host; its socket belongs to the host now
+
+	Stats ClientStats
 }
 
 // NewClient opens a socket and asks the host for a seat.
@@ -130,7 +143,7 @@ func NewClient(cfg ClientConfig) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	c := &Client{n: n, cfg: cfg, slot: Spectator}
+	c := &Client{n: n, cfg: cfg, slot: Spectator, tried: map[uint32]bool{}, lastHeard: cfg.Now()}
 	c.sendJoin()
 	return c, nil
 }
@@ -171,6 +184,7 @@ func (c *Client) handle(pks []packet) {
 		if pk.from != c.cfg.Host {
 			continue
 		}
+		c.lastHeard = c.cfg.Now()
 		m, err := Decode(pk.data)
 		if err != nil {
 			continue
@@ -182,6 +196,7 @@ func (c *Client) handle(pks []packet) {
 			}
 		case Roster:
 			c.roster = m
+			c.hostID = m.HostID
 		case Snapshot:
 			if s, ok := c.asm.add(m); ok {
 				c.snapshot(m.Epoch, s)
@@ -189,12 +204,18 @@ func (c *Client) handle(pks []packet) {
 		case Tick:
 			c.tick(m)
 		case Bye:
-			c.gone = true
+			c.gone, c.bye = true, true
 		}
 	}
 }
 
 func (c *Client) snapshot(epoch uint32, s *core.State) {
+	if c.adoptNext { // first snapshot from a new host: take it as it is
+		c.adoptNext = false
+		c.state, c.epoch = s, epoch
+		c.Stats.SnapshotsAdopted++
+		return
+	}
 	if c.state != nil && epoch == c.epoch {
 		switch {
 		case c.state.Tick == s.Tick:
@@ -215,6 +236,9 @@ func (c *Client) snapshot(epoch uint32, s *core.State) {
 }
 
 func (c *Client) tick(m Tick) {
+	if c.adoptNext {
+		return // wait for the new host's snapshot
+	}
 	if c.state == nil || m.Epoch != c.epoch || len(m.Records) == 0 {
 		c.lost(true)
 		return
@@ -265,7 +289,10 @@ func (c *Client) TakeEvents() []core.Event {
 // Send reports this tick's controls (players) or a periodic keep-alive
 // (spectators, and players before the game starts). Call once per tick.
 func (c *Client) Send(f Frame) {
-	if !c.joined {
+	if c.promoted {
+		return
+	}
+	if !c.joined || c.adoptNext {
 		if c.quiet++; c.quiet%6 == 0 {
 			c.sendJoin() // the join or its welcome was lost: ask again
 		}
@@ -288,6 +315,115 @@ func (c *Client) Send(f Frame) {
 
 // Close tells the host we are leaving.
 func (c *Client) Close() {
+	if c.promoted {
+		return
+	}
 	c.n.send(c.cfg.Host, Bye{ClientID: c.cfg.ClientID})
 	c.n.close()
+}
+
+// HostTimeout is how long clients wait in silence before deciding the host is gone.
+const HostTimeout = 2 * time.Second
+
+// Migration says what a client should do about its host.
+type Migration uint8
+
+// Migration steps.
+const (
+	MigrateNone       Migration = iota // the host is fine
+	MigrateRetarget                    // the host is gone; now following Seat
+	MigrateBecomeHost                  // the host is gone and we are next: call Promote
+	MigrateGiveUp                      // the host is gone and nobody can take over
+)
+
+// Migrate checks the host. When it has said goodbye or been silent for
+// HostTimeout, the next host is the remaining player with the lowest slot
+// in the last roster (spectators never host); if that is us we promote,
+// otherwise we follow it. A successor that stays silent is skipped in turn.
+func (c *Client) Migrate(now time.Time) (Migration, Seat) {
+	if c.promoted || !c.joined || (!c.bye && now.Sub(c.lastHeard) <= HostTimeout) {
+		return MigrateNone, Seat{}
+	}
+	c.tried[c.hostID] = true
+	if c.state == nil {
+		return MigrateGiveUp, Seat{}
+	}
+	var next *Seat
+	for i := range c.roster.Seats {
+		s := &c.roster.Seats[i]
+		if s.Slot < 0 || c.tried[s.ClientID] || s.ClientID == 0 {
+			continue
+		}
+		if next == nil || s.Slot < next.Slot {
+			next = s
+		}
+	}
+	if next == nil {
+		return MigrateGiveUp, Seat{}
+	}
+	if next.ClientID == c.cfg.ClientID {
+		return MigrateBecomeHost, *next
+	}
+	c.cfg.Host = c.reach(next.Addr)
+	c.hostID, c.lastHeard, c.bye, c.gone, c.adoptNext = next.ClientID, now, false, false, true
+	c.sendJoin()
+	return MigrateRetarget, *next
+}
+
+// reach turns an address the old host saw into one we can use: a peer the
+// old host saw on loopback ran on the old host's machine.
+func (c *Client) reach(a netip.AddrPort) netip.AddrPort {
+	if a.Addr().IsLoopback() && !c.cfg.Host.Addr().IsLoopback() {
+		return netip.AddrPortFrom(c.cfg.Host.Addr(), a.Port())
+	}
+	return a
+}
+
+// Promote turns this client into the host, on the same socket, continuing
+// from its own copy of the game: everyone keeps their slot, spectators
+// their place in the queue; the players of failed hosts leave. The client
+// must not be used afterwards.
+func (c *Client) Promote(cfg HostConfig) *Host {
+	cfg.GameID, cfg.ClientID = c.cfg.GameID, c.cfg.ClientID
+	if cfg.Nick == "" {
+		cfg.Nick = c.cfg.Nick
+	}
+	if cfg.Now == nil {
+		cfg.Now = c.cfg.Now
+	}
+	h := &Host{n: c.n, cfg: cfg, peers: map[uint32]*peer{}, state: c.state, epoch: c.epoch, self: c.slot}
+	h.skill = c.state.Cfg.Skill()
+	h.seats[c.slot] = hostSeat
+	now := cfg.Now()
+	for _, s := range c.roster.Seats {
+		switch {
+		case s.ClientID == c.cfg.ClientID:
+			continue
+		case c.tried[s.ClientID]:
+			if s.Slot >= 0 && c.state.Players[s.Slot].Joined {
+				h.leave[s.Slot] = true
+			}
+			continue
+		}
+		p := &peer{id: s.ClientID, addr: c.reach(s.Addr), nick: s.Nick, slot: s.Slot, lastHeard: now}
+		h.peers[p.id] = p
+		if s.Slot >= 0 {
+			h.seats[s.Slot] = p
+		} else {
+			h.queue = append(h.queue, p)
+		}
+	}
+	for slot := range h.seats { // hand the leavers' slots to waiting spectators
+		if h.leave[slot] && h.seats[slot] == nil && len(h.queue) > 0 {
+			next := h.queue[0]
+			h.queue = h.queue[1:]
+			h.seat(next, int8(slot))
+			h.rejoin = append(h.rejoin, slot)
+		}
+	}
+	h.disc, _ = listenRange(0) // newcomers probe the well-known ports
+	c.promoted = true
+	h.broadcastSnapshot()
+	h.sendRoster()
+	return h
 }

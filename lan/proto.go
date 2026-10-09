@@ -11,6 +11,7 @@ package lan
 import (
 	"encoding/binary"
 	"errors"
+	"net/netip"
 
 	"github.com/radimlif/nlSnipes/core"
 )
@@ -67,6 +68,7 @@ type Beacon struct {
 	Tick       uint32
 	Players    uint8
 	Spectators uint8
+	Port       uint16 // the game's port when the beacon comes from a discovery-only socket; 0 = the sender's
 }
 
 // Join asks for a seat.
@@ -131,17 +133,20 @@ type Resync struct {
 	ClientID uint32
 }
 
-// Seat is one roster line.
+// Seat is one roster line. Addr is where the host reaches that client (so
+// everyone can find a successor host); zero for the host's own seat.
 type Seat struct {
 	Slot     int8
 	ClientID uint32
 	Nick     string
+	Addr     netip.AddrPort
 }
 
 // Roster lists who is in the game, players by slot then spectators in
 // queue order. StartIn counts down the seconds until a host waiting on its
 // title screen starts the game anyway (0 = no countdown).
 type Roster struct {
+	HostID  uint32 // ClientID of the host's own seat
 	Seats   []Seat
 	StartIn uint8
 }
@@ -153,6 +158,18 @@ type writer []byte
 
 func (w *writer) u8(v uint8)   { *w = append(*w, v) }
 func (w *writer) u32(v uint32) { *w = binary.LittleEndian.AppendUint32(*w, v) }
+func (w *writer) u16(v uint16) { *w = binary.LittleEndian.AppendUint16(*w, v) }
+
+// addr writes an IPv4 address and port (6 bytes; zero for none).
+func (w *writer) addr(a netip.AddrPort) {
+	ip := [4]byte{}
+	if a.Addr().Is4() {
+		ip = a.Addr().As4()
+	}
+	*w = append(*w, ip[:]...)
+	w.u16(a.Port())
+}
+
 func (w *writer) str(s string, max int) {
 	if len(s) > max {
 		s = s[:max]
@@ -184,6 +201,30 @@ func (r *reader) u32() uint32 {
 	v := binary.LittleEndian.Uint32(r.b)
 	r.b = r.b[4:]
 	return v
+}
+
+func (r *reader) u16() uint16 {
+	if len(r.b) < 2 {
+		r.bad = true
+		return 0
+	}
+	v := binary.LittleEndian.Uint16(r.b)
+	r.b = r.b[2:]
+	return v
+}
+
+func (r *reader) addr() netip.AddrPort {
+	if len(r.b) < 6 {
+		r.bad = true
+		return netip.AddrPort{}
+	}
+	ip := [4]byte(r.b[:4])
+	r.b = r.b[4:]
+	port := r.u16()
+	if ip == [4]byte{} && port == 0 {
+		return netip.AddrPort{}
+	}
+	return netip.AddrPortFrom(netip.AddrFrom4(ip), port)
 }
 
 func (r *reader) str(max int) string {
@@ -233,6 +274,7 @@ func Encode(m any) []byte {
 		w.u32(m.Tick)
 		w.u8(m.Players)
 		w.u8(m.Spectators)
+		w.u16(m.Port)
 	case Join:
 		w = header(TJoin)
 		w.u8(Version)
@@ -295,6 +337,7 @@ func Encode(m any) []byte {
 		w.u32(m.ClientID)
 	case Roster:
 		w = header(TRoster)
+		w.u32(m.HostID)
 		w.u8(m.StartIn)
 		seats := m.Seats
 		if len(seats) > MaxRoster {
@@ -305,6 +348,7 @@ func Encode(m any) []byte {
 			w.u8(uint8(s.Slot))
 			w.u32(s.ClientID)
 			w.str(s.Nick, MaxNick)
+			w.addr(s.Addr)
 		}
 	default:
 		panic("lan: cannot encode message")
@@ -335,6 +379,7 @@ func Decode(b []byte) (any, error) {
 		v.Tick = r.u32()
 		v.Players = r.u8()
 		v.Spectators = r.u8()
+		v.Port = r.u16()
 		m = v
 	case TJoin:
 		if r.u8() != Version {
@@ -394,13 +439,14 @@ func Decode(b []byte) (any, error) {
 		m = Resync{ClientID: r.u32()}
 	case TRoster:
 		var v Roster
+		v.HostID = r.u32()
 		v.StartIn = r.u8()
 		n := int(r.u8())
 		if n > MaxRoster {
 			return nil, ErrBadPacket
 		}
 		for i := 0; i < n; i++ {
-			s := Seat{Slot: int8(r.u8()), ClientID: r.u32(), Nick: r.str(MaxNick)}
+			s := Seat{Slot: int8(r.u8()), ClientID: r.u32(), Nick: r.str(MaxNick), Addr: r.addr()}
 			if s.Slot < Spectator || s.Slot >= core.MaxPlayers {
 				return nil, ErrBadPacket
 			}
