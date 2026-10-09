@@ -131,3 +131,32 @@ func lines(f *term.Frame) []string {
 	}
 	return out
 }
+
+func TestLobbyShowsWhoWeWaitFor(t *testing.T) {
+	opt := Options{Seed: 5, Nick: "radim", FriendlyFire: true, Listen: "127.0.0.1:0"} // no skill: host is on the title
+	hs := term.NewSim(100, 40, true)
+	hg, err := NewHost(hs, opt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer hg.Close()
+	cs := term.NewSim(100, 40, true)
+	cg, err := NewClient(cs, Options{Nick: "guest", Listen: "127.0.0.1:0"}, lan.Found{Addr: hg.host.Addr()}, 55)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cg.Close()
+	host, guests := &lanNode{hg, hs}, []*lanNode{{cg, cs}}
+	lanTicks(host, guests, 10)
+	if find(cg.Frame(), "waiting for radim") == "" || find(cg.Frame(), "guest  (you)") == "" {
+		t.Fatalf("lobby screen:\n%s", strings.Join(lines(cg.Frame()), "\n"))
+	}
+	if find(hg.Frame(), "1 player is waiting") == "" {
+		t.Fatal("host title does not say a player is waiting")
+	}
+	hg.HandleEvent(term.Event{Kind: term.EvPress, Key: term.KeyEnter})
+	lanTicks(host, guests, 10)
+	if cg.screen != screenPlay {
+		t.Fatal("guest did not start playing when the host started")
+	}
+}

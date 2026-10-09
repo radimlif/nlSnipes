@@ -37,7 +37,7 @@ func (g *Game) compose() {
 		g.composeTitle()
 		return
 	case screenWaiting:
-		g.composeMessage("Joining the game on the LAN...", "Esc to quit")
+		g.composeWaiting()
 		return
 	case screenHostLeft:
 		g.composeMessage("The host left the game.", "Esc to quit, then start again to host")
@@ -74,6 +74,36 @@ func (g *Game) composeMessage(line, hint string) {
 	g.composeBanner(y0)
 	centre(g.frame, y0+11, line, term.White)
 	centre(g.frame, y0+13, hint, term.DarkGray)
+}
+
+// composeWaiting is the client's lobby: who hosts, who is in, and what we
+// are waiting for.
+func (g *Game) composeWaiting() {
+	f := g.frame
+	y0 := g.panelTop(term.Height)
+	g.composeBanner(y0)
+	r := g.client.Roster()
+	if !g.client.Joined() || len(r.Seats) == 0 {
+		centre(f, y0+10, "Joining the game on the LAN...", term.White)
+		centre(f, y0+13, "Esc to quit", term.DarkGray)
+		return
+	}
+	host := r.Seats[0].Nick
+	centre(f, y0+8, fmt.Sprintf("Joined %s's game", host), term.LightGreen)
+	centre(f, y0+9, fmt.Sprintf("waiting for %s to choose the skill and start", host), term.White)
+	y := y0 + 11
+	for _, seat := range r.Seats {
+		line, colour := "watching  "+seat.Nick, term.DarkGray
+		if seat.Slot >= 0 {
+			line, colour = fmt.Sprintf("player %d  %s", seat.Slot+1, seat.Nick), term.PlayerColours[seat.Slot]
+		}
+		if seat.ClientID != 0 && seat.Slot == g.client.Slot() && seat.Nick == g.opt.Nick {
+			line += "  (you)"
+		}
+		centre(f, y, line, colour)
+		y++
+	}
+	centre(f, y+1, "Esc to quit", term.DarkGray)
 }
 
 func (g *Game) composeTitle() {

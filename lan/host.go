@@ -83,7 +83,9 @@ func NewHost(cfg HostConfig) (*Host, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Host{n: n, cfg: cfg, peers: map[uint32]*peer{}}, nil
+	h := &Host{n: n, cfg: cfg, peers: map[uint32]*peer{}}
+	h.seats[0] = hostSeat // the host always plays in slot 0, lobby included
+	return h, nil
 }
 
 // Addr is the host's socket address.
