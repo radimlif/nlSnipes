@@ -114,6 +114,7 @@ type Client struct {
 	gone   bool
 	quiet  int // ticks since the last keep-alive
 	behind int // ticks we have known we are out of step
+	events []core.Event
 	Stats  ClientStats
 }
 
@@ -225,6 +226,7 @@ func (c *Client) tick(m Tick) {
 			continue
 		}
 		c.state.Step(r.Inputs)
+		c.events = append(c.events, c.state.Events...)
 		c.Stats.TicksApplied++
 		if c.state.Hash() != r.Hash {
 			c.Stats.Desyncs++
@@ -247,6 +249,14 @@ func (c *Client) lost(behind bool) {
 		c.Stats.Resyncs++
 	}
 	c.behind++
+}
+
+// TakeEvents returns the game events of every tick applied since the last
+// call (a Poll can apply several).
+func (c *Client) TakeEvents() []core.Event {
+	ev := c.events
+	c.events = nil
+	return ev
 }
 
 // Send reports this tick's controls (players) or a periodic keep-alive

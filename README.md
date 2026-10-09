@@ -4,7 +4,7 @@ NLSNIPES Light: the 1982 text-mode maze shooter *Snipes* as one small executable
 Launch it on any machine on your LAN. If a game is already running on the subnet you join it;
 otherwise you host and the game starts. Up to 4 players, everyone else spectates.
 
-**Status:** solo play works (milestone L2). LAN play comes in L3.
+**Status:** solo and LAN play work (milestone L3). Host migration and the 1.0 release come in L4.
 
 ## Play
 
@@ -20,7 +20,14 @@ nlsnipes M5     # or start straight away
 | Space | hold to run |
 | F1 · V · Esc | help (pauses) · classic 40×25 view · quit |
 
-Keys follow their position, so the fire pad works on QWERTZ and AZERTY too.
+Keys follow their position, so the fire pad works on QWERTZ and AZERTY too. Spectators: Tab
+switches the player you watch.
+
+**LAN:** start `nlsnipes` on each machine. The first one hosts (and picks the skill); the next
+three join as players, everyone after that watches and takes the next free slot. Use
+`--game NAME` for separate games on one network, `--host IP` when discovery can't cross your
+network, `--offline` to play alone. Allow the program through the firewall on first start
+(UDP ports 5108–5115).
 
 **Best terminal:** one that reports key releases, so you stop the moment you let go:
 Windows Terminal or cmd.exe on Windows; [Ghostty](https://ghostty.org), kitty, WezTerm or
