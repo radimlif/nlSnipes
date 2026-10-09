@@ -30,7 +30,8 @@ The current milestone is the open GitHub issue labelled `milestone`.
    else needs an ADR.
 
 ## Layout
-- `core/`   deterministic simulation (L1)
+- `core/`   deterministic simulation (L1); goldens in core/testdata/golden.txt (`go test ./core -run Golden -update`)
+- `bots/`   RandomBot, HunterBot, `Play` harness, L1 gate tests
 - `lan/`    UDP protocol: beacon/probe/join/welcome/input/snapshot/delta/bye, port 5108 (L3)
 - `term/`   tcell renderer 40×25 + key input → mask (L2)
 - `app/`    discover → host/join → play → migrate state machine (L2–L4)
@@ -41,8 +42,9 @@ The current milestone is the open GitHub issue labelled `milestone`.
 - `git submodule update --init`             fetch reference/ (needed by tests and simcheck)
 - `go build ./...`                          build everything
 - `go test ./...`                           unit + property + golden tests (fast)
-- `go test -race ./...`                     what CI runs
-- `go run ./cmd/simbot`                     bot games
+- `go test -race -short ./...`              what CI's test job runs
+- `go test -run Gate -v ./bots`             milestone gates in full (CI's sim job)
+- `go run ./cmd/simbot -skill A1 -seeds 100 -min-win 90`   bot games, replays verified
 - `go run ./tools/simcheck/cmd/simcheck`    similarity check against reference/
 - `gofmt -l . && go vet ./...`              lint
 - `GOTOOLCHAIN=go1.23.12 go run honnef.co/go/tools/cmd/staticcheck@2025.1.1 ./...`
@@ -62,7 +64,8 @@ The current milestone is the open GitHub issue labelled `milestone`.
 - Grid 128×120 toroidal; 16×20 cells of 8×6. Viewport 40×22 + 3 HUD rows.
 - Digit 1–9: maxSnipes 10 20 30 40 60 80 100 120 150; hives 3 3 4 4 5 5 6 8 10;
   lives 5 5 5 5 5 4 4 3 2.
-- Letter tables (accuracy, smallSnipes, bounce, explosionMask): DESIGN.md §2.
+- Letter tables (accuracy, smallSnipes, bounce, explosionMask): DESIGN.md §2. Snipe spear odds:
+  docs/decisions/0004 (DESIGN.md §6.4's formula is wrong).
   Electric walls for letters ≥ M; hives resist spears for letters ≥ W.
 - Score: +1 snipe, +50 hive. Killing another player scores nothing (friendly fire on by default).
 - 4 players max, slot colours white, yellow, cyan, magenta; spectators unlimited.

@@ -99,7 +99,6 @@ const (
 	RespawnDelay  = 36
 	DebrisLife    = 18
 	SnipeMoveRate = 2
-	SpearRange    = 20 // a snipe only fires at a player within this many tiles on both axes
 )
 
 // State is the complete authoritative game.

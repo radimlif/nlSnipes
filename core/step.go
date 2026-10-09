@@ -219,8 +219,9 @@ func (s *State) tryMove(i int, d uint8) moveResult {
 	return moveOK
 }
 
-// edgeTile is the tile just outside entity e's footprint in direction d.
-func edgeTile(e *Entity, d uint8) (int32, int32) {
+// EdgeTile is the tile just outside entity e's footprint in direction d:
+// where a bullet or spear fired that way appears.
+func EdgeTile(e *Entity, d uint8) (int32, int32) {
 	w, h := e.Kind.Size()
 	dx, dy := DirDelta(d)
 	x, y := e.X, e.Y
@@ -240,7 +241,7 @@ func edgeTile(e *Entity, d uint8) (int32, int32) {
 }
 
 func (s *State) fire(i int, d uint8) {
-	bx, by := edgeTile(&s.Ents[i], d)
+	bx, by := EdgeTile(&s.Ents[i], d)
 	owner := s.Ents[i].Owner
 	if s.Wall(bx, by) {
 		return
@@ -347,11 +348,6 @@ func (s *State) stepSnipe(i int) {
 		return
 	}
 	s.Ents[i].Timer = SnipeMoveRate
-	if dx, dy, ok := s.nearestPlayer(s.Ents[i].X, s.Ents[i].Y); ok &&
-		abs32(dx) <= SpearRange && abs32(dy) <= SpearRange &&
-		s.Rng.Mask(0xFFFF>>(15-uint32(s.Cfg.Accuracy))) == 0 {
-		s.snipeFire(i, aimDir(dx, dy))
-	}
 	e := &s.Ents[i]
 	if s.Rng.Mask(3) == 0 {
 		e.Dir = (e.Dir + uint8(e.Turn)) & 7
@@ -360,29 +356,46 @@ func (s *State) stepSnipe(i int) {
 		}
 	}
 	d := e.Dir
-	if s.tryMove(i, d) == moveBlocked {
+	switch s.tryMove(i, d) {
+	case moveBlocked:
 		s.Ents[i].Dir = (d + uint8(s.Ents[i].Turn)) & 7
+	case moveDied:
+		return
+	}
+	if s.snipeWantsToFire(i) {
+		s.snipeFire(i, s.Ents[i].Dir)
 	}
 }
 
-// aimDir picks the 8-way direction closest to the vector (dx, dy).
-func aimDir(dx, dy int32) uint8 {
-	ax, ay := abs32(dx), abs32(dy)
-	switch {
-	case ax > 2*ay:
-		dy = 0
-	case ay > 2*ax:
-		dx = 0
-	}
-	d, ok := dirOf(sign32(dx), sign32(dy))
+// snipeWantsToFire: a large snipe shoots only along its heading, and only
+// when the nearest player lies on that line — straight ahead, or close to
+// the diagonal (|6·|dx| − 8·|dy|| < 8, allowing for 8 × 6 cells). The odds
+// fall with distance and rise with the letter's accuracy: with
+// shift = (|dx|+|dy|) >> accuracy, it fires with chance 1 in 2^(shift+1),
+// never when shift > 10.
+func (s *State) snipeWantsToFire(i int) bool {
+	e := &s.Ents[i]
+	dx, dy, ok := s.nearestPlayer(e.X, e.Y)
 	if !ok {
-		return DirE
+		return false
 	}
-	return d
+	toward, _ := dirOf(sign32(dx), sign32(dy))
+	if toward != e.Dir {
+		return false
+	}
+	ax, ay := abs32(dx), abs32(dy)
+	if ax != 0 && ay != 0 && abs32(6*ax-8*ay) >= 8 {
+		return false
+	}
+	shift := uint32(ax+ay) >> s.Cfg.Accuracy
+	if shift > 10 {
+		return false
+	}
+	return s.Rng.Mask(0xFFFF>>(15-shift)) == 0
 }
 
 func (s *State) snipeFire(i int, d uint8) {
-	x, y := edgeTile(&s.Ents[i], d)
+	x, y := EdgeTile(&s.Ents[i], d)
 	if s.Wall(x, y) {
 		return
 	}
