@@ -110,17 +110,43 @@ func TestFifthPlayerSpectates(t *testing.T) {
 	}
 }
 
-func TestClientSeesHostLeave(t *testing.T) {
+func TestGuestTakesOverWhenHostLeaves(t *testing.T) {
 	host, cs := lanSetup(t, 1)
 	lanTicks(host, cs, 10)
 	host.g.Close()
 	time.Sleep(5 * time.Millisecond)
-	cs[0].g.Tick()
-	if cs[0].g.screen != screenHostLeft {
-		t.Fatalf("client screen %d after the host left", cs[0].g.screen)
+	g := cs[0].g
+	g.Tick()
+	if g.host == nil || g.client != nil || g.screen != screenPlay {
+		t.Fatalf("guest did not take over: host=%v client=%v screen=%d", g.host != nil, g.client != nil, g.screen)
 	}
-	if !strings.Contains(strings.Join(lines(cs[0].g.Frame()), "\n"), "host left") {
-		t.Fatal("no host-left message")
+	if g.Slot() != 1 || g.State().PlayerEntity(1) < 0 {
+		t.Fatalf("new host plays in slot %d", g.Slot())
+	}
+	if find(g.Frame(), "you are the host now") == "" {
+		t.Fatal("no takeover message")
+	}
+	for i := 0; i < 20; i++ {
+		g.Tick() // the game goes on under the new host
+	}
+	if g.State().Players[0].Joined {
+		t.Fatal("old host's player still in the game")
+	}
+}
+
+func TestHostLeavingTheLobbyEndsIt(t *testing.T) {
+	opt := Options{Seed: 5, Nick: "radim", Listen: "127.0.0.1:0"} // host still on its title screen
+	hs := term.NewSim(100, 40, true)
+	hg, _ := NewHost(hs, opt)
+	cs := term.NewSim(100, 40, true)
+	cg, _ := NewClient(cs, Options{Nick: "guest", Listen: "127.0.0.1:0"}, lan.Found{Addr: hg.host.Addr()}, 57)
+	defer cg.Close()
+	lanTicks(&lanNode{hg, hs}, []*lanNode{{cg, cs}}, 5)
+	hg.Close()
+	time.Sleep(5 * time.Millisecond)
+	cg.Tick()
+	if cg.screen != screenHostLeft || !strings.Contains(strings.Join(lines(cg.Frame()), "\n"), "host left") {
+		t.Fatalf("guest screen %d after the host left the lobby", cg.screen)
 	}
 }
 

@@ -223,3 +223,39 @@ func TestGateFuzzedPacketsDuringPlay(t *testing.T) {
 		}
 	}
 }
+
+// A player who leaves while a spectator waits hands over the slot: the
+// spectator must actually enter the game, not just be told its slot.
+func TestSpectatorTakesLeaversSlot(t *testing.T) {
+	g := newLANGame(t, "A1", 3, 1, 0)
+	for i := 0; i < 30; i++ {
+		g.tick()
+	}
+	var leaver, spec *Client
+	for _, c := range g.clients {
+		switch {
+		case c.Slot() == Spectator:
+			spec = c
+		case leaver == nil:
+			leaver = c
+		}
+	}
+	slot := leaver.Slot()
+	leaver.Close()
+	for i, c := range g.clients {
+		if c == leaver {
+			g.clients = append(g.clients[:i], g.clients[i+1:]...)
+			g.cBots = append(g.cBots[:i], g.cBots[i+1:]...)
+			break
+		}
+	}
+	for i := 0; i < 10; i++ {
+		g.tick()
+	}
+	if spec.Slot() != slot {
+		t.Fatalf("spectator has slot %d, want the leaver's %d", spec.Slot(), slot)
+	}
+	if s := g.host.State(); !s.Players[slot].Joined || s.PlayerEntity(int(slot)) < 0 {
+		t.Fatal("spectator was seated but never entered the game")
+	}
+}

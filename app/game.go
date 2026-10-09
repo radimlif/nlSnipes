@@ -114,7 +114,7 @@ func NewOffline(t term.Terminal, opt Options) *Game {
 // NewHost starts hosting: others on the LAN can join.
 func NewHost(t term.Terminal, opt Options) (*Game, error) {
 	g := newGame(t, opt)
-	h, err := lan.NewHost(lan.HostConfig{Listen: opt.Listen, GameID: lan.GameID(opt.GameName), Nick: opt.Nick,
+	h, err := lan.NewHost(lan.HostConfig{Listen: opt.Listen, GameID: lan.GameID(opt.GameName), ClientID: newClientID(), Nick: opt.Nick,
 		FriendlyFire: opt.FriendlyFire, AllowMirror: opt.AllowMirror, Now: opt.Now})
 	if err != nil {
 		return nil, err
@@ -154,8 +154,11 @@ func (g *Game) State() *core.State {
 
 // Slot is the local player's slot, or lan.Spectator.
 func (g *Game) Slot() int8 {
-	if g.client != nil {
+	switch {
+	case g.client != nil:
 		return g.client.Slot()
+	case g.host != nil:
+		return g.host.Self()
 	}
 	return 0
 }
@@ -341,6 +344,13 @@ func (g *Game) flash(msg string, colour uint8, ticks uint32) {
 	}
 }
 
+// note is a minor message: shown only when nothing more important is up.
+func (g *Game) note(msg string, colour uint8) {
+	if s := g.State(); s == nil || g.msg == "" || s.Tick >= g.msgUntil {
+		g.flash(msg, colour, 2*core.TicksPerSecond)
+	}
+}
+
 func rk(r rune) term.KeyID { return term.KeyID{Key: term.KeyRune, Rune: r} }
 
 // bindings map key positions (US layout names) to input bits. Arrows, the
@@ -421,27 +431,26 @@ func (g *Game) Tick() {
 		g.host.Poll()
 	case g.client != nil:
 		g.client.Poll()
+		g.migrate()
 	}
 	switch g.screen {
 	case screenTitle:
 		g.tickLobby()
 	case screenWaiting:
-		if g.client.HostGone() {
-			g.screen = screenHostLeft
-		} else if s := g.client.State(); s != nil {
+		if g.client != nil && g.client.State() != nil {
 			g.epochSeen = g.client.Epoch()
 			g.enterPlay()
 		}
-		g.client.Send(lan.Frame{})
+		if g.client != nil {
+			g.client.Send(lan.Frame{})
+		}
 	case screenPlay:
 		g.tickPlay()
 	case screenResult:
 		switch {
 		case g.client != nil:
 			g.client.Send(lan.Frame{})
-			if g.client.HostGone() {
-				g.screen = screenHostLeft
-			} else if g.client.Epoch() != g.epochSeen && g.client.State() != nil {
+			if g.client.Epoch() != g.epochSeen && g.client.State() != nil {
 				g.epochSeen = g.client.Epoch()
 				g.enterPlay()
 			}
@@ -489,10 +498,6 @@ func (g *Game) tickPlay() {
 		}
 		events = g.host.State().Events
 	case g.client != nil:
-		if g.client.HostGone() {
-			g.screen = screenHostLeft
-			return
-		}
 		f := lan.Frame{Mirror: g.mirrorWanted}
 		if !g.help {
 			f = g.Input()
@@ -514,6 +519,25 @@ func (g *Game) tickPlay() {
 	if g.State().Phase != core.PhaseRunning {
 		g.screen, g.resultT = screenResult, resultTicks
 		g.saveScore()
+	}
+}
+
+// migrate follows the client's host migration: on to the next host, or
+// become the host ourselves, or give up when nobody can take over.
+func (g *Game) migrate() {
+	switch m, seat := g.client.Migrate(g.opt.Now()); m {
+	case lan.MigrateRetarget:
+		g.flash("Host left - "+seat.Nick+" takes over...", term.Yellow, 3*core.TicksPerSecond)
+	case lan.MigrateBecomeHost:
+		g.host = g.client.Promote(lan.HostConfig{Nick: g.opt.Nick, FriendlyFire: g.opt.FriendlyFire,
+			AllowMirror: g.opt.AllowMirror, Now: g.opt.Now})
+		g.client = nil
+		if g.screen == screenResult {
+			g.resultT = resultTicks
+		}
+		g.flash("Host left - you are the host now", term.Yellow, 3*core.TicksPerSecond)
+	case lan.MigrateGiveUp:
+		g.screen = screenHostLeft
 	}
 }
 
@@ -614,11 +638,11 @@ func (g *Game) react(events []core.Event) {
 			}
 		case core.EvJoin:
 			if ev.Slot != me {
-				g.flash(g.nick(ev.Slot)+" joined the game", term.LightCyan, 2*core.TicksPerSecond)
+				g.note(g.nick(ev.Slot)+" joined the game", term.LightCyan)
 			}
 		case core.EvLeave:
 			if ev.Slot != me {
-				g.flash("a player left", term.LightGray, 2*core.TicksPerSecond)
+				g.note("a player left", term.LightGray)
 			}
 		}
 	}

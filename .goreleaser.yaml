@@ -27,3 +27,6 @@ checksum:
 
 changelog:
   use: github
+
+release:
+  prerelease: auto # tags like v1.0.0-rc.1 publish as pre-releases

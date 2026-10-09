@@ -48,7 +48,7 @@ Passing gates is necessary, not sufficient — the owner's standing ask is "make
 - `term/`   own terminal layer: ANSI renderer 40×25, input parser (VT + kitty protocol), Windows
             console input, key-hold tracking/emulation, `Sim` for tests (L2)
 - `app/`    the game: launch (discover → join or host), title/HUD/roster/help/results, spectator
-            camera, high scores; host migration in L4
+            camera, host migration handling (ADR 0009), high scores
 - `cmd/nlsnipes/` the game binary · `cmd/simbot/` headless bot games for CI
 - `tools/simcheck/` the similarity checker · `reference/` read-only submodule, never edit
 
@@ -63,7 +63,8 @@ Passing gates is necessary, not sufficient — the owner's standing ask is "make
 - `gofmt -l . && go vet ./...`              lint
 - `GOTOOLCHAIN=go1.23.12 go run honnef.co/go/tools/cmd/staticcheck@2025.1.1 ./...`
                                             staticcheck as CI runs it (it can't read newer Go's export data)
-- `go run ./cmd/nlsnipes M5`                play
+- `go run ./cmd/nlsnipes M5`                play (`--offline` alone; two instances = a LAN game)
+- `./scripts/demo-gif.sh`                   regenerate docs/demo.gif (needs `brew install agg`)
 
 ## Conventions
 - Branch `l<n>/<slug>`; PR title `L<n>: <milestone>`; conventional commits (`feat:`, `fix:`,
