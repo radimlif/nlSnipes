@@ -25,7 +25,7 @@ Quality bar: code a senior Go engineer would merge without comments; tests that 
 right reason; no TODOs in merged code; ADRs for judgement calls.
 
 Safety and scope: only touch this repository; never commit secrets; never force-push or rewrite
-history on main; no dependencies beyond the standard library and tcell without an ADR.
+history on main; no dependencies beyond the standard library, golang.org/x/term and golang.org/x/sys without an ADR.
 
 Begin by confirming, in one short comment on the milestone issue, which milestone you are
 starting and your plan.

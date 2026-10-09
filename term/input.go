@@ -29,11 +29,11 @@ type EventKind uint8
 
 // Event kinds.
 const (
-	EvPress   EventKind = iota + 1 // first press, or a press when releases are not reported
-	EvRepeat                       // auto-repeat of a held key
-	EvRelease                      // key let go (only where the platform reports it)
-	EvKittySupported               // terminal answered the kitty keyboard query
-	EvDeviceAttributes             // terminal answered the primary device attributes query
+	EvPress            EventKind = iota + 1 // first press, or a press when releases are not reported
+	EvRepeat                                // auto-repeat of a held key
+	EvRelease                               // key let go (only where the platform reports it)
+	EvKittySupported                        // terminal answered the kitty keyboard query
+	EvDeviceAttributes                      // terminal answered the primary device attributes query
 )
 
 // Event is one keyboard event.

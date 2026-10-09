@@ -11,7 +11,7 @@ executable with LAN auto-join over UDP, five milestones (L0–L4), and recommend
 - The first release is Light. DESIGN.md stays in the repo as the long-term plan and remains
   authoritative for game rules and specs (§2, §6.1–§6.7, §6.10).
 - Language: Go (module `github.com/radimlif/nlSnipes`, `go 1.23` minimum), standard library
-  plus tcell. Static binaries for windows/amd64, darwin/arm64, darwin/amd64, linux/amd64.
+  plus tcell (replaced by an own terminal layer, ADR 0005). Static binaries for windows/amd64, darwin/arm64, darwin/amd64, linux/amd64.
 - Milestones are named L0–L4, branches `l<n>/<slug>`, PRs `L<n>: <name>`.
 - The other Light defaults are taken as written: friendly fire on, new maze after a win or
   wipe-out, UDP port 5108, `--game` for separate games on one subnet.
